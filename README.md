@@ -18,11 +18,11 @@ This SDK supports **both CommonJS and ESM** projects automatically. No configura
 ## 📦 Installation
 
 ```bash
-npm install @admin-sdk/auth
+npm install @bastratat/admin-sdk-auth
 # or
-pnpm add @admin-sdk/auth
+pnpm add @bastratat/admin-sdk-auth
 # or
-yarn add @admin-sdk/auth
+yarn add @bastratat/admin-sdk-auth
 ```
 
 ## 🔧 Usage
@@ -42,7 +42,7 @@ yarn add @admin-sdk/auth
 
 ```typescript
 // index.ts
-const { AuthSDK, AdminSDK } = require('@admin-sdk/auth');
+const { AuthSDK, AdminSDK } = require('@bastratat/admin-sdk-auth');
 
 const authSDK = new AuthSDK({
   issuer: "https://your-project.supabase.co/auth/v1",
@@ -74,7 +74,7 @@ const authSDK = new AuthSDK({
 
 ```typescript
 // index.ts
-import { AuthSDK, AdminSDK } from '@admin-sdk/auth';
+import { AuthSDK, AdminSDK } from '@bastratat/admin-sdk-auth';
 
 const authSDK = new AuthSDK({
   issuer: "https://your-project.supabase.co/auth/v1",

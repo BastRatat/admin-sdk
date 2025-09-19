@@ -1,5 +1,5 @@
 {
-  "name": "@admin-sdk/auth",
+  "name": "@bastratat/admin-sdk-auth",
   "version": "1.0.0",
   "description": "Unified TypeScript SDK for Supabase Auth verification, RBAC, and admin operations",
   "main": "dist/index.js",
@@ -10,6 +10,9 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist"

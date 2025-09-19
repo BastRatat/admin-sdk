@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@bastratat'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -33,6 +35,11 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Publish to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version
         run: |
@@ -67,12 +74,12 @@ jobs:
 
             ### Installation
             ```bash
-            npm install @admin-sdk/auth
+            npm install @bastratat/admin-sdk-auth
             ```
 
             ### Usage
             ```typescript
-            import { AuthSDK } from '@admin-sdk/auth';
+            import { AuthSDK } from '@bastratat/admin-sdk-auth';
 
             const authSDK = new AuthSDK({
               issuer: "https://your-project.supabase.co/auth/v1",
