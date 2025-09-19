@@ -324,7 +324,7 @@ export class AuthSDK {
    */
   private normalizeClaims(payload: JWTPayload): AuthContext {
     const appMetadata = payload.app_metadata ?? {};
-    const apps = appMetadata.apps ?? [];
+    const apps = appMetadata.services ?? [];
     const roles = appMetadata.roles ?? {};
     const isServiceAccount = appMetadata.is_service_account ?? false;
 

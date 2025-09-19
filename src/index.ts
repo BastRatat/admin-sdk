@@ -12,7 +12,21 @@ export type {
   JWTPayload,
   AuthContext,
   AuthConfig,
+  MicroserviceAuthConfig,
   AdminConfig,
+  ClientAuthConfig,
+  SignupOptions,
+  SigninOptions,
+  PasswordResetOptions,
+  PasswordUpdateOptions,
+  EmailVerificationOptions,
+  OAuthOptions,
+  SessionData,
+  AuthResult,
+  MicroserviceSignupOptions,
+  MicroserviceSigninOptions,
+  ServiceManagementOptions,
+  MicroserviceMiddlewareOptions,
   SessionCheckFunction,
   Logger,
   LogMeta,
@@ -33,6 +47,7 @@ export {
   PermissionError,
   TokenFreshnessError,
   ConfigError,
+  ClientAuthError,
 } from "./types";
 
 // Core auth functionality
@@ -40,3 +55,9 @@ export { AuthSDK } from "./auth-sdk";
 
 // Admin functionality
 export { AdminSDK } from "./admin-sdk";
+
+// Client auth functionality
+export { ClientAuthSDK } from "./client-auth-sdk";
+
+// Microservice auth functionality (RECOMMENDED)
+export { MicroserviceAuthSDK } from "./microservice-auth-sdk";
