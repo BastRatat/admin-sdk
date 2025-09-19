@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -24,11 +29,6 @@ jobs:
           cache: "pnpm"
           registry-url: "https://npm.pkg.github.com"
           scope: "@bastratat"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
