@@ -25,7 +25,9 @@ let jwksClientModule: any = null;
 
 async function getJwksClient() {
   if (!jwksClientModule) {
-    jwksClientModule = await import("jwks-client");
+    // Use Function constructor to avoid TypeScript compilation issues
+    const dynamicImport = new Function("specifier", "return import(specifier)");
+    jwksClientModule = await dynamicImport("jwks-client");
   }
   return jwksClientModule.default || jwksClientModule;
 }
@@ -230,15 +232,80 @@ export class MicroserviceAuthSDK {
    */
   async verifyToken(token: string): Promise<TokenVerificationResult> {
     try {
-      // Parse token header to get key ID
+      // Parse token header to get key ID and algorithm
       const header = this.parseTokenHeader(token);
 
-      // Get signing key from JWKS
-      const signingKey = await this.getSigningKey(header.kid ?? "");
+      // For HMAC tokens, use Supabase's built-in verification instead of local verification
+      if (header.alg?.startsWith("HS")) {
+        this.logger?.debug("Using Supabase API for HMAC token verification", {
+          kid: header.kid,
+          algorithm: header.alg,
+        });
+
+        // Use Supabase's built-in JWT verification via the user endpoint
+        const { data, error } = await this.supabase.auth.getUser(token);
+
+        if (error || !data.user) {
+          this.logger?.error("Supabase JWT verification failed", {
+            error: error?.message,
+          });
+          throw new AuthError(
+            "Invalid token",
+            "INVALID_TOKEN",
+            error?.message || "Token verification failed",
+            "Ensure the token is valid and not expired"
+          );
+        }
+
+        // Parse the token payload manually for service access check
+        const payload = JSON.parse(
+          Buffer.from(token.split(".")[1], "base64").toString()
+        ) as JWTPayload;
+
+        // Validate standard claims
+        this.validateStandardClaims(payload);
+
+        // Create normalized auth context using the existing normalizeClaims method
+        const context = this.normalizeClaims(payload);
+
+        // Verify user has access to current service
+        if (!context.apps.includes(this.config.serviceName)) {
+          this.logger?.warn("Token verification denied - no service access", {
+            userId: context.userId,
+            serviceName: this.config.serviceName,
+            userServices: context.apps,
+          });
+          return {
+            success: false,
+            error: new PermissionError(
+              "Access denied to service",
+              "SERVICE_ACCESS_DENIED",
+              `User not authorized for service: ${this.config.serviceName}`,
+              "Contact administrator to grant service access"
+            ),
+          };
+        }
+
+        // Log successful verification
+        this.logger?.info("Token verified successfully", {
+          userId: context.userId,
+          sessionId: context.sessionId,
+          serviceName: this.config.serviceName,
+          decision: "allow",
+        });
+
+        return { success: true, context };
+      }
+
+      // For RSA tokens, use JWKS verification
+      const signingKey = await this.getSigningKey(header.kid ?? "", header.alg);
+
+      // Determine supported algorithms based on token type
+      const algorithms = ["RS256", "RS384", "RS512"];
 
       // Verify token signature and parse payload
       const payload = jwt.verify(token, signingKey, {
-        algorithms: ["RS256"],
+        algorithms: algorithms as any,
         issuer: this.config.issuer,
         audience: Array.isArray(this.config.expectedAudience)
           ? this.config.expectedAudience[0]
@@ -711,10 +778,29 @@ export class MicroserviceAuthSDK {
   }
 
   /**
-   * Get signing key from JWKS
+   * Get signing key from JWKS or use service key for HMAC
    */
-  private async getSigningKey(kid: string): Promise<string> {
+  private async getSigningKey(
+    kid: string,
+    algorithm?: string
+  ): Promise<string> {
     try {
+      // For HMAC algorithms (HS256, HS384, HS512), use the anon key directly
+      if (algorithm && algorithm.startsWith("HS")) {
+        this.logger?.debug("Using anon key for HMAC token verification", {
+          kid,
+          algorithm,
+        });
+        // Extract the JWT secret from the anon key (the part after the last dot)
+        const anonKeyParts = process.env.SUPABASE_ANON_KEY?.split(".");
+        if (anonKeyParts && anonKeyParts.length === 3) {
+          return anonKeyParts[2]; // Use the signature part as the secret
+        }
+        // Fallback to service key if anon key parsing fails
+        return this.config.supabaseServiceKey;
+      }
+
+      // For RSA algorithms, use JWKS
       if (!this.jwksClient) {
         const jwksClientModule = await getJwksClient();
         this.jwksClient = jwksClientModule({
@@ -727,6 +813,7 @@ export class MicroserviceAuthSDK {
     } catch (error) {
       this.logger?.error("Failed to get signing key", {
         kid,
+        algorithm,
         error: error instanceof Error ? error.message : "Unknown error",
       });
       throw new AuthError(
