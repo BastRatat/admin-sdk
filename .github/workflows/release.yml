@@ -11,6 +11,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +40,9 @@ jobs:
         run: pnpm build
 
       - name: Publish to GitHub Packages
-        run: npm publish
+        run: |
+          pnpm config set registry https://npm.pkg.github.com
+          pnpm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

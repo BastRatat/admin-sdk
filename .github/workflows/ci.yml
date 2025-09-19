@@ -54,6 +54,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +81,8 @@ jobs:
         run: pnpm build
 
       - name: Publish to GitHub Packages
-        run: npm publish
+        run: |
+          pnpm config set registry https://npm.pkg.github.com
+          pnpm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
