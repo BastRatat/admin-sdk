@@ -48,7 +48,7 @@ jobs:
 
       - name: Update version
         run: |
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          pnpm version ${{ github.event.inputs.version }} --no-git-tag-version
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add package.json
@@ -79,7 +79,7 @@ jobs:
 
             ### Installation
             ```bash
-            npm install @bastratat/admin-sdk-auth
+            pnpm add @bastratat/admin-sdk-auth
             ```
 
             ### Usage
