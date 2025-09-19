@@ -21,9 +21,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@bastratat'
+          cache: "pnpm"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@bastratat"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
