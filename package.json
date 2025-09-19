@@ -1,6 +1,6 @@
 {
   "name": "@bastratat/admin-sdk-auth",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Unified TypeScript SDK for Supabase Auth verification, RBAC, and admin operations",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
