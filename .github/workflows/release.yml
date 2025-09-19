@@ -36,6 +36,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Update version
+        run: |
+          pnpm version ${{ github.event.inputs.version }} --no-git-tag-version
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json
+          git commit -m "Release v${{ github.event.inputs.version }}"
+
       - name: Build
         run: pnpm build
 
@@ -45,14 +53,6 @@ jobs:
           pnpm publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update version
-        run: |
-          pnpm version ${{ github.event.inputs.version }} --no-git-tag-version
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add package.json
-          git commit -m "Release v${{ github.event.inputs.version }}"
 
       - name: Create tag
         run: |
