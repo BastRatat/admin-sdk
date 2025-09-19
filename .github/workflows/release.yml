@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., 1.0.0)"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Update version
+        run: |
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json
+          git commit -m "Release v${{ github.event.inputs.version }}"
+
+      - name: Create tag
+        run: |
+          git tag "v${{ github.event.inputs.version }}"
+          git push origin "v${{ github.event.inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          release_name: Release v${{ github.event.inputs.version }}
+          body: |
+            ## What's New in v${{ github.event.inputs.version }}
+
+            ### Features
+            - Unified TypeScript SDK for Supabase Auth
+            - Dual package support (CommonJS + ESM)
+            - JWT verification via JWKS
+            - RBAC authorization helpers
+            - Admin API wrapper
+            - Framework-agnostic design
+
+            ### Installation
+            ```bash
+            npm install @admin-sdk/auth
+            ```
+
+            ### Usage
+            ```typescript
+            import { AuthSDK } from '@admin-sdk/auth';
+
+            const authSDK = new AuthSDK({
+              issuer: "https://your-project.supabase.co/auth/v1",
+              jwksUri: "https://your-project.supabase.co/auth/v1/jwks",
+              expectedAudience: "authenticated",
+              serviceName: "my-service"
+            });
+            ```
+          draft: false
+          prerelease: false
