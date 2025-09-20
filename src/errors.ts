@@ -17,7 +17,7 @@ export abstract class SDKError extends Error {
  * Authentication error - invalid, missing, or expired token
  */
 export class AuthError extends SDKError {
-  readonly code = "AUTH_ERROR";
+  readonly code = 'AUTH_ERROR';
   readonly statusCode = 401;
 
   constructor(
@@ -27,7 +27,7 @@ export class AuthError extends SDKError {
     readonly remediation?: string
   ) {
     super(message);
-    this.name = "AuthError";
+    this.name = 'AuthError';
   }
 }
 
@@ -35,7 +35,7 @@ export class AuthError extends SDKError {
  * Permission error - valid token but insufficient permissions
  */
 export class PermissionError extends SDKError {
-  readonly code = "PERMISSION_ERROR";
+  readonly code = 'PERMISSION_ERROR';
   readonly statusCode = 403;
 
   constructor(
@@ -45,7 +45,7 @@ export class PermissionError extends SDKError {
     readonly remediation?: string
   ) {
     super(message);
-    this.name = "PermissionError";
+    this.name = 'PermissionError';
   }
 }
 
@@ -53,7 +53,7 @@ export class PermissionError extends SDKError {
  * Token freshness error - session revoked or AAL requirements not met
  */
 export class TokenFreshnessError extends SDKError {
-  readonly code = "TOKEN_FRESHNESS_ERROR";
+  readonly code = 'TOKEN_FRESHNESS_ERROR';
   readonly statusCode = 401;
 
   constructor(
@@ -63,7 +63,7 @@ export class TokenFreshnessError extends SDKError {
     readonly remediation?: string
   ) {
     super(message);
-    this.name = "TokenFreshnessError";
+    this.name = 'TokenFreshnessError';
   }
 }
 
@@ -71,7 +71,7 @@ export class TokenFreshnessError extends SDKError {
  * Configuration error - invalid SDK setup
  */
 export class ConfigError extends SDKError {
-  readonly code = "CONFIG_ERROR";
+  readonly code = 'CONFIG_ERROR';
   readonly statusCode = 500;
 
   constructor(
@@ -81,7 +81,7 @@ export class ConfigError extends SDKError {
     readonly remediation?: string
   ) {
     super(message);
-    this.name = "ConfigError";
+    this.name = 'ConfigError';
   }
 }
 
@@ -89,7 +89,7 @@ export class ConfigError extends SDKError {
  * Client authentication error
  */
 export class ClientAuthError extends SDKError {
-  readonly code = "CLIENT_AUTH_ERROR";
+  readonly code = 'CLIENT_AUTH_ERROR';
   readonly statusCode = 400;
 
   constructor(
@@ -99,6 +99,6 @@ export class ClientAuthError extends SDKError {
     readonly remediation?: string
   ) {
     super(message);
-    this.name = "ClientAuthError";
+    this.name = 'ClientAuthError';
   }
 }

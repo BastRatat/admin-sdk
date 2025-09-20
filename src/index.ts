@@ -4,8 +4,8 @@ export type {
   MicroserviceSignupOptions,
   MicroserviceSigninOptions,
   TokenVerificationResult,
-} from "./types";
+} from './types';
 
-export { AuthError, PermissionError, ConfigError } from "./errors";
+export { AuthError, PermissionError, ConfigError } from './errors';
 
-export { AuthSDK } from "./auth-sdk";
+export { AuthSDK } from './auth-sdk';

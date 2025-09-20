@@ -2,14 +2,14 @@
  * Unified types for Supabase Auth SDK with RBAC and Admin operations
  */
 
-import type { SDKError } from "./errors";
+import type { SDKError } from './errors';
 
 /**
  * Standard JWT header claims
  */
 export type JWTHeader = {
   readonly alg: string;
-  readonly typ: "JWT";
+  readonly typ: 'JWT';
   readonly kid?: string;
 };
 
@@ -22,7 +22,7 @@ export type StandardClaims = {
   readonly exp: number; // Expiration time (Unix timestamp)
   readonly iat: number; // Issued at (Unix timestamp)
   readonly sub: string; // Subject (user ID)
-  readonly role: "authenticated" | "anon" | "service_role";
+  readonly role: 'authenticated' | 'anon' | 'service_role';
   readonly session_id?: string; // Supabase session identifier
 };
 
@@ -36,7 +36,7 @@ export type SupabaseClaims = {
     readonly is_service_account?: boolean; // Service account flag
   };
   readonly user_metadata?: Readonly<Record<string, unknown>>; // User-controlled data
-  readonly aal?: "aal1" | "aal2" | "aal3"; // Authentication Assurance Level
+  readonly aal?: 'aal1' | 'aal2' | 'aal3'; // Authentication Assurance Level
   readonly email?: string;
   readonly phone?: string;
   readonly email_confirmed_at?: string;
@@ -59,7 +59,7 @@ export type AuthContext = {
   readonly apps: readonly string[];
   readonly roles: Readonly<Record<string, string>>;
   readonly isServiceAccount: boolean;
-  readonly aal: "aal1" | "aal2" | "aal3" | undefined;
+  readonly aal: 'aal1' | 'aal2' | 'aal3' | undefined;
   readonly issuedAt: Date;
   readonly expiresAt: Date;
   readonly rawClaims: JWTPayload;
@@ -112,7 +112,7 @@ export type LogMeta = {
   readonly userId?: string;
   readonly sessionId?: string;
   readonly serviceName?: string;
-  readonly decision?: "allow" | "deny";
+  readonly decision?: 'allow' | 'deny';
   readonly reason?: string;
   readonly [key: string]: unknown;
 };
@@ -122,7 +122,7 @@ export type LogMeta = {
  */
 export type AssertionOptions = {
   readonly requireSession?: boolean; // Force session existence check
-  readonly requireAAL?: "aal1" | "aal2" | "aal3"; // Require specific AAL
+  readonly requireAAL?: 'aal1' | 'aal2' | 'aal3'; // Require specific AAL
   readonly logger?: Logger; // Override logger for this assertion
 };
 
@@ -212,7 +212,7 @@ export type MicroserviceMiddlewareOptions = {
   readonly requireAuth?: boolean; // Default: true
   readonly requireSession?: boolean; // Default: false
   readonly requireRole?: string; // Optional role requirement for current service
-  readonly requireAAL?: "aal1" | "aal2" | "aal3"; // Optional AAL requirement
+  readonly requireAAL?: 'aal1' | 'aal2' | 'aal3'; // Optional AAL requirement
   readonly allowServiceAccounts?: boolean; // Default: false
   readonly updateLastSeen?: boolean; // Default: true - update user metadata with last_seen
 };
@@ -223,8 +223,8 @@ export type MicroserviceMiddlewareOptions = {
  * @template TUserMetadata - Type for user_metadata (defaults to any for maximum flexibility)
  */
 export type User<
-  TAppMetadata extends object = any,
-  TUserMetadata extends object = any,
+  TAppMetadata extends object = Record<string, unknown>,
+  TUserMetadata extends object = Record<string, unknown>,
 > = {
   readonly id: string;
   readonly email?: string;
@@ -243,8 +243,8 @@ export type User<
  * @template TUserMetadata - Type for user_metadata (defaults to any)
  */
 export type AuthResponse<
-  TAppMetadata extends object = any,
-  TUserMetadata extends object = any,
+  TAppMetadata extends object = Record<string, unknown>,
+  TUserMetadata extends object = Record<string, unknown>,
 > = {
   readonly user: User<TAppMetadata, TUserMetadata> | null;
   readonly session: SessionData | null;
@@ -330,7 +330,7 @@ export type PasswordUpdateOptions = {
 export type EmailVerificationOptions = {
   readonly email: string;
   readonly token: string;
-  readonly type: "signup" | "recovery" | "email_change";
+  readonly type: 'signup' | 'recovery' | 'email_change';
 };
 
 /**
@@ -338,12 +338,12 @@ export type EmailVerificationOptions = {
  */
 export type OAuthOptions = {
   readonly provider:
-    | "google"
-    | "github"
-    | "discord"
-    | "facebook"
-    | "twitter"
-    | "apple";
+    | 'google'
+    | 'github'
+    | 'discord'
+    | 'facebook'
+    | 'twitter'
+    | 'apple';
   readonly options?: {
     readonly redirectTo?: string;
     readonly scopes?: string;
@@ -359,7 +359,7 @@ export type SessionData = {
   readonly refresh_token: string;
   readonly expires_in: number;
   readonly expires_at?: number;
-  readonly token_type: "bearer";
+  readonly token_type: 'bearer';
   readonly user: {
     readonly id: string;
     readonly email?: string;
@@ -380,7 +380,7 @@ export type AuthResult =
   | {
       readonly success: true;
       readonly session: SessionData;
-      readonly user: SessionData["user"];
+      readonly user: SessionData['user'];
     }
   | {
       readonly success: false;
@@ -392,13 +392,13 @@ export type AuthResult =
  */
 export type ExpressRequest = {
   readonly headers: Record<string, string | string[] | undefined>;
-  readonly user?: AuthContext;
-  readonly session?: { readonly access_token: string };
+  user?: AuthContext;
+  session?: { readonly access_token: string };
 };
 
 export type ExpressResponse = {
   readonly status: (code: number) => ExpressResponse;
-  readonly json: (data: any) => void;
+  readonly json: (data: unknown) => void;
   readonly setHeader: (name: string, value: string) => void;
 };
 

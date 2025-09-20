@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-import jwt from "jsonwebtoken";
+import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
 import type {
   MicroserviceAuthConfig,
   MicroserviceSignupOptions,
@@ -16,9 +16,9 @@ import type {
   ExpressResponse,
   ExpressNextFunction,
   JWKSClient,
-} from "./types";
-import { AuthError, PermissionError, ConfigError } from "./errors";
-import { getJwksClient } from "./jwks-client";
+} from './types';
+import { AuthError, PermissionError, ConfigError } from './errors';
+import { getJwksClient } from './jwks-client';
 
 /**
  * MicroserviceAuthSDK for server-side microservice authentication
@@ -72,7 +72,7 @@ export class AuthSDK {
         app_metadata: {
           services: [this.config.serviceName],
           roles: {
-            [this.config.serviceName]: "user",
+            [this.config.serviceName]: 'user',
           },
         },
         user_metadata: {
@@ -88,7 +88,7 @@ export class AuthSDK {
       const { data, error } = await this.supabase.auth.admin.createUser(user);
 
       if (error) {
-        this.logger?.error("User signup failed", {
+        this.logger?.error('User signup failed', {
           email: options.email,
           serviceName: this.config.serviceName,
           error: error.message,
@@ -96,15 +96,15 @@ export class AuthSDK {
         return {
           success: false,
           error: new AuthError(
-            "Signup failed",
-            "SIGNUP_ERROR",
+            'Signup failed',
+            'SIGNUP_ERROR',
             error.message,
-            "Check email format and password requirements"
+            'Check email format and password requirements'
           ),
         };
       }
 
-      this.logger?.info("User signed up successfully", {
+      this.logger?.info('User signed up successfully', {
         userId: data.user?.id,
         email: options.email,
         serviceName: this.config.serviceName,
@@ -115,18 +115,18 @@ export class AuthSDK {
         user: data.user as User,
       };
     } catch (error) {
-      this.logger?.error("Signup error", {
+      this.logger?.error('Signup error', {
         email: options.email,
         serviceName: this.config.serviceName,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         success: false,
         error: new AuthError(
-          "Signup failed",
-          "SIGNUP_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Check network connection and try again"
+          'Signup failed',
+          'SIGNUP_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
         ),
       };
     }
@@ -150,7 +150,7 @@ export class AuthSDK {
       });
 
       if (error) {
-        this.logger?.error("User signin failed", {
+        this.logger?.error('User signin failed', {
           email: options.email,
           serviceName: this.config.serviceName,
           error: error.message,
@@ -158,17 +158,17 @@ export class AuthSDK {
         return {
           success: false,
           error: new AuthError(
-            "Signin failed",
-            "SIGNIN_ERROR",
+            'Signin failed',
+            'SIGNIN_ERROR',
             error.message,
-            "Check email and password"
+            'Check email and password'
           ),
         };
       }
 
       const userServices = data.user?.app_metadata?.services || [];
       if (!userServices.includes(this.config.serviceName)) {
-        this.logger?.warn("User signin denied - no service access", {
+        this.logger?.warn('User signin denied - no service access', {
           userId: data.user?.id,
           email: options.email,
           serviceName: this.config.serviceName,
@@ -177,17 +177,17 @@ export class AuthSDK {
         return {
           success: false,
           error: new PermissionError(
-            "Access denied to service",
-            "SERVICE_ACCESS_DENIED",
+            'Access denied to service',
+            'SERVICE_ACCESS_DENIED',
             `User not authorized for service: ${this.config.serviceName}`,
-            "Contact administrator to grant service access"
+            'Contact administrator to grant service access'
           ),
         };
       }
 
       await this.updateUserLastSeen(data.user.id);
 
-      this.logger?.info("User signed in successfully", {
+      this.logger?.info('User signed in successfully', {
         userId: data.user?.id,
         email: options.email,
         serviceName: this.config.serviceName,
@@ -199,18 +199,18 @@ export class AuthSDK {
         session: data.session as SessionData | null,
       };
     } catch (error) {
-      this.logger?.error("Signin error", {
+      this.logger?.error('Signin error', {
         email: options.email,
         serviceName: this.config.serviceName,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         success: false,
         error: new AuthError(
-          "Signin failed",
-          "SIGNIN_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Check network connection and try again"
+          'Signin failed',
+          'SIGNIN_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
         ),
       };
     }
@@ -223,8 +223,8 @@ export class AuthSDK {
     try {
       const header = this.parseTokenHeader(token);
 
-      if (header.alg?.startsWith("HS")) {
-        this.logger?.debug("Using Supabase API for HMAC token verification", {
+      if (header.alg?.startsWith('HS')) {
+        this.logger?.debug('Using Supabase API for HMAC token verification', {
           kid: header.kid,
           algorithm: header.alg,
         });
@@ -232,19 +232,19 @@ export class AuthSDK {
         const { data, error } = await this.supabase.auth.getUser(token);
 
         if (error || !data.user) {
-          this.logger?.error("Supabase JWT verification failed", {
+          this.logger?.error('Supabase JWT verification failed', {
             error: error?.message,
           });
           throw new AuthError(
-            "Invalid token",
-            "INVALID_TOKEN",
-            error?.message || "Token verification failed",
-            "Ensure the token is valid and not expired"
+            'Invalid token',
+            'INVALID_TOKEN',
+            error?.message || 'Token verification failed',
+            'Ensure the token is valid and not expired'
           );
         }
 
         const payload = JSON.parse(
-          Buffer.from(token.split(".")[1], "base64").toString()
+          Buffer.from(token.split('.')[1], 'base64').toString()
         ) as JWTPayload;
 
         this.validateStandardClaims(payload);
@@ -254,7 +254,7 @@ export class AuthSDK {
 
         // Verify user has access to current service
         if (!context.apps.includes(this.config.serviceName)) {
-          this.logger?.warn("Token verification denied - no service access", {
+          this.logger?.warn('Token verification denied - no service access', {
             userId: context.userId,
             serviceName: this.config.serviceName,
             userServices: context.apps,
@@ -262,34 +262,34 @@ export class AuthSDK {
           return {
             success: false,
             error: new PermissionError(
-              "Access denied to service",
-              "SERVICE_ACCESS_DENIED",
+              'Access denied to service',
+              'SERVICE_ACCESS_DENIED',
               `User not authorized for service: ${this.config.serviceName}`,
-              "Contact administrator to grant service access"
+              'Contact administrator to grant service access'
             ),
           };
         }
 
         // Log successful verification
-        this.logger?.info("Token verified successfully", {
+        this.logger?.info('Token verified successfully', {
           userId: context.userId,
           sessionId: context.sessionId,
           serviceName: this.config.serviceName,
-          decision: "allow",
+          decision: 'allow',
         });
 
         return { success: true, context };
       }
 
       // For RSA tokens, use JWKS verification
-      const signingKey = await this.getSigningKey(header.kid ?? "", header.alg);
+      const signingKey = await this.getSigningKey(header.kid ?? '', header.alg);
 
       // Determine supported algorithms based on token type
-      const algorithms = ["RS256", "RS384", "RS512"];
+      const algorithms = ['RS256', 'RS384', 'RS512'];
 
       // Verify token signature and parse payload
       const payload = jwt.verify(token, signingKey, {
-        algorithms: algorithms as any,
+        algorithms: algorithms as jwt.Algorithm[],
         issuer: this.config.issuer,
         audience: Array.isArray(this.config.expectedAudience)
           ? this.config.expectedAudience[0]
@@ -302,7 +302,7 @@ export class AuthSDK {
       const context = this.normalizeClaims(payload);
 
       if (!context.apps.includes(this.config.serviceName)) {
-        this.logger?.warn("Token verification denied - no service access", {
+        this.logger?.warn('Token verification denied - no service access', {
           userId: context.userId,
           serviceName: this.config.serviceName,
           userServices: context.apps,
@@ -310,19 +310,19 @@ export class AuthSDK {
         return {
           success: false,
           error: new PermissionError(
-            "Access denied to service",
-            "SERVICE_ACCESS_DENIED",
+            'Access denied to service',
+            'SERVICE_ACCESS_DENIED',
             `User not authorized for service: ${this.config.serviceName}`,
-            "Contact administrator to grant service access"
+            'Contact administrator to grant service access'
           ),
         };
       }
 
-      this.logger?.info("Token verified successfully", {
+      this.logger?.info('Token verified successfully', {
         userId: context.userId,
         sessionId: context.sessionId,
         serviceName: this.config.serviceName,
-        decision: "allow",
+        decision: 'allow',
       });
 
       return { success: true, context };
@@ -341,7 +341,7 @@ export class AuthSDK {
       const { error } = await this.supabase.auth.admin.signOut(userId);
 
       if (error) {
-        this.logger?.error("User signout failed", {
+        this.logger?.error('User signout failed', {
           userId,
           serviceName: this.config.serviceName,
           error: error.message,
@@ -349,33 +349,33 @@ export class AuthSDK {
         return {
           success: false,
           error: new AuthError(
-            "Signout failed",
-            "SIGNOUT_ERROR",
+            'Signout failed',
+            'SIGNOUT_ERROR',
             error.message,
-            "Try refreshing the page"
+            'Try refreshing the page'
           ),
         };
       }
 
-      this.logger?.info("User signed out successfully", {
+      this.logger?.info('User signed out successfully', {
         userId,
         serviceName: this.config.serviceName,
       });
 
       return { success: true };
     } catch (error) {
-      this.logger?.error("Signout error", {
+      this.logger?.error('Signout error', {
         userId,
         serviceName: this.config.serviceName,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         success: false,
         error: new AuthError(
-          "Signout failed",
-          "SIGNOUT_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Try refreshing the page"
+          'Signout failed',
+          'SIGNOUT_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Try refreshing the page'
         ),
       };
     }
@@ -395,10 +395,10 @@ export class AuthSDK {
         return {
           success: false,
           error: new AuthError(
-            "Failed to get user",
-            "USER_NOT_FOUND",
+            'Failed to get user',
+            'USER_NOT_FOUND',
             getUserError.message,
-            "Check user ID"
+            'Check user ID'
           ),
         };
       }
@@ -410,7 +410,7 @@ export class AuthSDK {
         const updatedServices = [...currentServices, options.serviceName];
         const updatedRoles = {
           ...currentRoles,
-          [options.serviceName]: options.role || "user",
+          [options.serviceName]: options.role || 'user',
         };
 
         const { error: updateError } =
@@ -425,35 +425,35 @@ export class AuthSDK {
           return {
             success: false,
             error: new AuthError(
-              "Failed to add user to service",
-              "SERVICE_ADD_ERROR",
+              'Failed to add user to service',
+              'SERVICE_ADD_ERROR',
               updateError.message,
-              "Check service name and try again"
+              'Check service name and try again'
             ),
           };
         }
       }
 
-      this.logger?.info("User added to service", {
+      this.logger?.info('User added to service', {
         userId: options.userId,
         serviceName: options.serviceName,
-        role: options.role || "user",
+        role: options.role || 'user',
       });
 
       return { success: true };
     } catch (error) {
-      this.logger?.error("Add user to service error", {
+      this.logger?.error('Add user to service error', {
         userId: options.userId,
         serviceName: options.serviceName,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         success: false,
         error: new AuthError(
-          "Failed to add user to service",
-          "SERVICE_ADD_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Check network connection and try again"
+          'Failed to add user to service',
+          'SERVICE_ADD_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
         ),
       };
     }
@@ -473,10 +473,10 @@ export class AuthSDK {
         return {
           success: false,
           error: new AuthError(
-            "Failed to get user",
-            "USER_NOT_FOUND",
+            'Failed to get user',
+            'USER_NOT_FOUND',
             getUserError.message,
-            "Check user ID"
+            'Check user ID'
           ),
         };
       }
@@ -503,34 +503,34 @@ export class AuthSDK {
           return {
             success: false,
             error: new AuthError(
-              "Failed to remove user from service",
-              "SERVICE_REMOVE_ERROR",
+              'Failed to remove user from service',
+              'SERVICE_REMOVE_ERROR',
               updateError.message,
-              "Check service name and try again"
+              'Check service name and try again'
             ),
           };
         }
       }
 
-      this.logger?.info("User removed from service", {
+      this.logger?.info('User removed from service', {
         userId: options.userId,
         serviceName: options.serviceName,
       });
 
       return { success: true };
     } catch (error) {
-      this.logger?.error("Remove user from service error", {
+      this.logger?.error('Remove user from service error', {
         userId: options.userId,
         serviceName: options.serviceName,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         success: false,
         error: new AuthError(
-          "Failed to remove user from service",
-          "SERVICE_REMOVE_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Check network connection and try again"
+          'Failed to remove user from service',
+          'SERVICE_REMOVE_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
         ),
       };
     }
@@ -553,10 +553,10 @@ export class AuthSDK {
           services: [],
           roles: {},
           error: new AuthError(
-            "Failed to get user",
-            "USER_NOT_FOUND",
+            'Failed to get user',
+            'USER_NOT_FOUND',
             getUserError.message,
-            "Check user ID"
+            'Check user ID'
           ),
         };
       }
@@ -566,18 +566,18 @@ export class AuthSDK {
 
       return { services, roles };
     } catch (error) {
-      this.logger?.error("Get user services error", {
+      this.logger?.error('Get user services error', {
         userId,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return {
         services: [],
         roles: {},
         error: new AuthError(
-          "Failed to get user services",
-          "GET_SERVICES_ERROR",
-          error instanceof Error ? error.message : "Unknown error",
-          "Check network connection and try again"
+          'Failed to get user services',
+          'GET_SERVICES_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
         ),
       };
     }
@@ -605,19 +605,19 @@ export class AuthSDK {
           return next();
         }
 
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("X-Frame-Options", "DENY");
-        res.setHeader("X-XSS-Protection", "1; mode=block");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
 
         const authHeader = req.headers.authorization;
         if (
           !authHeader ||
-          typeof authHeader !== "string" ||
-          !authHeader.startsWith("Bearer ")
+          typeof authHeader !== 'string' ||
+          !authHeader.startsWith('Bearer ')
         ) {
           return res.status(401).json({
-            error: "Missing or invalid authorization header",
-            code: "MISSING_TOKEN",
+            error: 'Missing or invalid authorization header',
+            code: 'MISSING_TOKEN',
           });
         }
 
@@ -635,8 +635,8 @@ export class AuthSDK {
 
         if (context.isServiceAccount && !allowServiceAccounts) {
           return res.status(403).json({
-            error: "Service accounts not allowed",
-            code: "SERVICE_ACCOUNT_DENIED",
+            error: 'Service accounts not allowed',
+            code: 'SERVICE_ACCOUNT_DENIED',
           });
         }
 
@@ -645,13 +645,13 @@ export class AuthSDK {
           if (userRole !== requireRole) {
             return res.status(403).json({
               error: `Required role: ${requireRole}, user role: ${userRole}`,
-              code: "INSUFFICIENT_ROLE",
+              code: 'INSUFFICIENT_ROLE',
             });
           }
         }
 
         if (requireAAL) {
-          const userAAL = context.aal || "aal1";
+          const userAAL = context.aal || 'aal1';
           const aalLevels = { aal1: 1, aal2: 2, aal3: 3 };
           const userLevel = aalLevels[userAAL as keyof typeof aalLevels] || 1;
           const requiredLevel = aalLevels[requireAAL];
@@ -659,14 +659,14 @@ export class AuthSDK {
           if (userLevel < requiredLevel) {
             return res.status(403).json({
               error: `Required AAL: ${requireAAL}, user AAL: ${userAAL}`,
-              code: "INSUFFICIENT_AAL",
+              code: 'INSUFFICIENT_AAL',
             });
           }
         }
 
         if (updateLastSeen) {
-          this.updateUserLastSeen(context.userId).catch((err) => {
-            this.logger?.warn("Failed to update last seen", {
+          this.updateUserLastSeen(context.userId).catch(err => {
+            this.logger?.warn('Failed to update last seen', {
               userId: context.userId,
               error: err.message,
             });
@@ -674,17 +674,17 @@ export class AuthSDK {
         }
 
         // Attach user context to request
-        (req as any).user = context;
-        (req as any).session = { access_token: token };
+        req.user = context;
+        req.session = { access_token: token };
 
         next();
       } catch (error) {
-        this.logger?.error("Middleware error", {
-          error: error instanceof Error ? error.message : "Unknown error",
+        this.logger?.error('Middleware error', {
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
         return res.status(500).json({
-          error: "Internal server error",
-          code: "MIDDLEWARE_ERROR",
+          error: 'Internal server error',
+          code: 'MIDDLEWARE_ERROR',
         });
       }
     };
@@ -708,9 +708,9 @@ export class AuthSDK {
       }
     } catch (error) {
       // Don't throw - this is a non-critical operation
-      this.logger?.warn("Failed to update last seen", {
+      this.logger?.warn('Failed to update last seen', {
         userId,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -720,24 +720,26 @@ export class AuthSDK {
    */
   private parseTokenHeader(token: string): jwt.JwtHeader {
     try {
-      const parts = token.split(".");
+      const parts = token.split('.');
       if (parts.length !== 3) {
         throw new AuthError(
-          "Invalid token format",
-          "INVALID_TOKEN_FORMAT",
-          "JWT must have exactly 3 parts separated by dots",
-          "Ensure the token is a valid JWT"
+          'Invalid token format',
+          'INVALID_TOKEN_FORMAT',
+          'JWT must have exactly 3 parts separated by dots',
+          'Ensure the token is a valid JWT'
         );
       }
 
-      const header = JSON.parse(Buffer.from(parts[0]!, "base64url").toString());
+      const header = JSON.parse(
+        Buffer.from(parts[0] || '', 'base64url').toString()
+      );
 
-      if (header.typ !== "JWT") {
+      if (header.typ !== 'JWT') {
         throw new AuthError(
-          "Invalid token type",
-          "INVALID_TOKEN_TYPE",
+          'Invalid token type',
+          'INVALID_TOKEN_TYPE',
           `Expected JWT, got ${header.typ}`,
-          "Ensure the token is a valid JWT"
+          'Ensure the token is a valid JWT'
         );
       }
 
@@ -747,10 +749,10 @@ export class AuthSDK {
         throw error;
       }
       throw new AuthError(
-        "Invalid token header",
-        "INVALID_TOKEN_HEADER",
-        "Token header is not valid JSON",
-        "Ensure the token is a valid JWT"
+        'Invalid token header',
+        'INVALID_TOKEN_HEADER',
+        'Token header is not valid JSON',
+        'Ensure the token is a valid JWT'
       );
     }
   }
@@ -764,13 +766,13 @@ export class AuthSDK {
   ): Promise<string> {
     try {
       // For HMAC algorithms (HS256, HS384, HS512), use the anon key directly
-      if (algorithm && algorithm.startsWith("HS")) {
-        this.logger?.debug("Using anon key for HMAC token verification", {
+      if (algorithm && algorithm.startsWith('HS')) {
+        this.logger?.debug('Using anon key for HMAC token verification', {
           kid,
           algorithm,
         });
         // Extract the JWT secret from the anon key (the part after the last dot)
-        const anonKeyParts = process.env.SUPABASE_ANON_KEY?.split(".");
+        const anonKeyParts = process.env.SUPABASE_ANON_KEY?.split('.');
         if (anonKeyParts && anonKeyParts.length === 3) {
           return anonKeyParts[2]; // Use the signature part as the secret
         }
@@ -787,19 +789,27 @@ export class AuthSDK {
           cache: false,
         });
       }
-      const key = await this.jwksClient!.getSigningKey(kid);
+      if (!this.jwksClient) {
+        throw new ConfigError(
+          'JWKS client not initialized',
+          'JWKS_CLIENT_NOT_INITIALIZED',
+          'JWKS client failed to initialize',
+          'Check JWKS URI and network connectivity'
+        );
+      }
+      const key = await this.jwksClient.getSigningKey(kid);
       return key.getPublicKey();
     } catch (error) {
-      this.logger?.error("Failed to get signing key", {
+      this.logger?.error('Failed to get signing key', {
         kid,
         algorithm,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       throw new AuthError(
-        "Invalid token signature",
-        "JWKS_KEY_NOT_FOUND",
+        'Invalid token signature',
+        'JWKS_KEY_NOT_FOUND',
         `Key ID ${kid} not found in JWKS`,
-        "Verify the token was issued by the correct Supabase project"
+        'Verify the token was issued by the correct Supabase project'
       );
     }
   }
@@ -808,12 +818,12 @@ export class AuthSDK {
    * Validate standard JWT claims
    */
   private validateStandardClaims(payload: JWTPayload): void {
-    if (payload.role !== "authenticated") {
+    if (payload.role !== 'authenticated') {
       throw new AuthError(
-        "Invalid token role",
-        "INVALID_TOKEN_ROLE",
+        'Invalid token role',
+        'INVALID_TOKEN_ROLE',
         `Expected 'authenticated', got '${payload.role}'`,
-        "Token must be issued for authenticated users"
+        'Token must be issued for authenticated users'
       );
     }
 
@@ -822,19 +832,19 @@ export class AuthSDK {
 
     if (payload.exp < now - clockSkew) {
       throw new AuthError(
-        "Token expired",
-        "TOKEN_EXPIRED",
+        'Token expired',
+        'TOKEN_EXPIRED',
         `Token expired at ${new Date(payload.exp * 1000).toISOString()}`,
-        "Request a new token or refresh the current one"
+        'Request a new token or refresh the current one'
       );
     }
 
     if (payload.iat > now + clockSkew) {
       throw new AuthError(
-        "Token issued in the future",
-        "INVALID_IAT",
+        'Token issued in the future',
+        'INVALID_IAT',
         `Token issued at ${new Date(payload.iat * 1000).toISOString()}`,
-        "Check system clock synchronization"
+        'Check system clock synchronization'
       );
     }
   }
@@ -872,26 +882,26 @@ export class AuthSDK {
       error instanceof PermissionError ||
       error instanceof ConfigError
     ) {
-      this.logger?.error("Token verification failed", {
+      this.logger?.error('Token verification failed', {
         error: error.message,
         reason: error.reason,
-        decision: "deny",
+        decision: 'deny',
       });
       return { success: false, error };
     }
 
     if (error instanceof jwt.JsonWebTokenError) {
       const authError = new AuthError(
-        "Invalid token",
-        "INVALID_TOKEN",
+        'Invalid token',
+        'INVALID_TOKEN',
         error.message,
-        "Verify the token is valid and not tampered with"
+        'Verify the token is valid and not tampered with'
       );
 
-      this.logger?.error("JWT verification failed", {
+      this.logger?.error('JWT verification failed', {
         error: error.message,
         reason: authError.reason,
-        decision: "deny",
+        decision: 'deny',
       });
 
       return { success: false, error: authError };
@@ -899,16 +909,16 @@ export class AuthSDK {
 
     if (error instanceof jwt.TokenExpiredError) {
       const authError = new AuthError(
-        "Token expired",
-        "TOKEN_EXPIRED",
+        'Token expired',
+        'TOKEN_EXPIRED',
         `Token expired at ${error.expiredAt.toISOString()}`,
-        "Request a new token or refresh the current one"
+        'Request a new token or refresh the current one'
       );
 
-      this.logger?.error("Token expired", {
+      this.logger?.error('Token expired', {
         expiredAt: error.expiredAt.toISOString(),
         reason: authError.reason,
-        decision: "deny",
+        decision: 'deny',
       });
 
       return { success: false, error: authError };
@@ -916,16 +926,16 @@ export class AuthSDK {
 
     if (error instanceof jwt.NotBeforeError) {
       const authError = new AuthError(
-        "Token not yet valid",
-        "TOKEN_NOT_ACTIVE",
+        'Token not yet valid',
+        'TOKEN_NOT_ACTIVE',
         `Token valid from ${error.date.toISOString()}`,
-        "Wait until the token becomes valid"
+        'Wait until the token becomes valid'
       );
 
-      this.logger?.error("Token not yet valid", {
+      this.logger?.error('Token not yet valid', {
         validFrom: error.date.toISOString(),
         reason: authError.reason,
-        decision: "deny",
+        decision: 'deny',
       });
 
       return { success: false, error: authError };
@@ -933,16 +943,16 @@ export class AuthSDK {
 
     // Unknown error
     const authError = new AuthError(
-      "Token verification failed",
-      "UNKNOWN_ERROR",
-      error instanceof Error ? error.message : "Unknown error occurred",
-      "Check token validity and system configuration"
+      'Token verification failed',
+      'UNKNOWN_ERROR',
+      error instanceof Error ? error.message : 'Unknown error occurred',
+      'Check token validity and system configuration'
     );
 
-    this.logger?.error("Unknown verification error", {
-      error: error instanceof Error ? error.message : "Unknown error",
+    this.logger?.error('Unknown verification error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
       reason: authError.reason,
-      decision: "deny",
+      decision: 'deny',
     });
 
     return { success: false, error: authError };
@@ -954,10 +964,10 @@ export class AuthSDK {
   private validateSignupOptions(options: MicroserviceSignupOptions): void {
     if (!options.email || !this.isValidEmail(options.email)) {
       throw new AuthError(
-        "Invalid email address",
-        "INVALID_EMAIL",
-        "Email must be a valid email address",
-        "Provide a valid email address"
+        'Invalid email address',
+        'INVALID_EMAIL',
+        'Email must be a valid email address',
+        'Provide a valid email address'
       );
     }
 
@@ -966,10 +976,10 @@ export class AuthSDK {
       options.password.length < AuthSDK.PASSWORD_MIN_LENGTH
     ) {
       throw new AuthError(
-        "Invalid password",
-        "INVALID_PASSWORD",
+        'Invalid password',
+        'INVALID_PASSWORD',
         `Password must be at least ${AuthSDK.PASSWORD_MIN_LENGTH} characters long`,
-        "Provide a stronger password"
+        'Provide a stronger password'
       );
     }
   }
@@ -980,19 +990,19 @@ export class AuthSDK {
   private validateSigninOptions(options: MicroserviceSigninOptions): void {
     if (!options.email || !this.isValidEmail(options.email)) {
       throw new AuthError(
-        "Invalid email address",
-        "INVALID_EMAIL",
-        "Email must be a valid email address",
-        "Provide a valid email address"
+        'Invalid email address',
+        'INVALID_EMAIL',
+        'Email must be a valid email address',
+        'Provide a valid email address'
       );
     }
 
     if (!options.password) {
       throw new AuthError(
-        "Password required",
-        "MISSING_PASSWORD",
-        "Password is required for signin",
-        "Provide a password"
+        'Password required',
+        'MISSING_PASSWORD',
+        'Password is required for signin',
+        'Provide a password'
       );
     }
   }
@@ -1008,46 +1018,46 @@ export class AuthSDK {
   private validateConfig(): void {
     if (!this.config.supabaseUrl) {
       throw new ConfigError(
-        "Missing Supabase URL",
-        "MISSING_SUPABASE_URL",
-        "Supabase URL is required",
-        "Set the Supabase project URL in SDK configuration"
+        'Missing Supabase URL',
+        'MISSING_SUPABASE_URL',
+        'Supabase URL is required',
+        'Set the Supabase project URL in SDK configuration'
       );
     }
 
     if (!this.config.supabaseServiceKey) {
       throw new ConfigError(
-        "Missing Supabase service key",
-        "MISSING_SERVICE_KEY",
-        "Supabase service role key is required",
-        "Set the Supabase service role key in SDK configuration"
+        'Missing Supabase service key',
+        'MISSING_SERVICE_KEY',
+        'Supabase service role key is required',
+        'Set the Supabase service role key in SDK configuration'
       );
     }
 
     if (!this.config.issuer) {
       throw new ConfigError(
-        "Missing issuer configuration",
-        "MISSING_ISSUER",
-        "Issuer URL is required",
-        "Set the Supabase Auth URL in SDK configuration"
+        'Missing issuer configuration',
+        'MISSING_ISSUER',
+        'Issuer URL is required',
+        'Set the Supabase Auth URL in SDK configuration'
       );
     }
 
     if (!this.config.jwksUri) {
       throw new ConfigError(
-        "Missing JWKS URI configuration",
-        "MISSING_JWKS_URI",
-        "JWKS URI is required for token verification",
-        "Set the JWKS endpoint URL in SDK configuration"
+        'Missing JWKS URI configuration',
+        'MISSING_JWKS_URI',
+        'JWKS URI is required for token verification',
+        'Set the JWKS endpoint URL in SDK configuration'
       );
     }
 
     if (!this.config.serviceName) {
       throw new ConfigError(
-        "Missing service name configuration",
-        "MISSING_SERVICE_NAME",
-        "Service name is required for microservice authentication",
-        "Set the current microservice name in SDK configuration"
+        'Missing service name configuration',
+        'MISSING_SERVICE_NAME',
+        'Service name is required for microservice authentication',
+        'Set the current microservice name in SDK configuration'
       );
     }
   }

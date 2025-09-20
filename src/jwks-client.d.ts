@@ -1,4 +1,4 @@
-declare module "jwks-client" {
+declare module 'jwks-client' {
   interface JwksClient {
     getSigningKey(kid: string): Promise<{ getPublicKey(): string }>;
     getSigningKeys(): Promise<unknown[]>;

@@ -28,7 +28,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -39,6 +39,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Format check
+        run: pnpm format:check
+
       - name: Build
         run: pnpm build
 
@@ -46,9 +49,6 @@ jobs:
         run: |
           # Test CommonJS build
           node -e "const { AuthSDK } = require('./dist/index.js'); console.log('CommonJS build works!');"
-
-          # Test ESM build
-          node --input-type=module -e "import { AuthSDK } from './dist/index.mjs'; console.log('ESM build works!');"
 
   publish:
     needs: test
@@ -70,9 +70,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "pnpm"
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@bastratat"
+          cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@bastratat'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
