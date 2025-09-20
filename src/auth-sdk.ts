@@ -223,71 +223,15 @@ export class AuthSDK {
     try {
       const header = this.parseTokenHeader(token);
 
-      if (header.alg?.startsWith('HS')) {
-        this.logger?.debug('Using Supabase API for HMAC token verification', {
-          kid: header.kid,
-          algorithm: header.alg,
-        });
+      this.logger?.debug('Using JWKS verification for token', {
+        kid: header.kid,
+        algorithm: header.alg,
+      });
 
-        const { data, error } = await this.supabase.auth.getUser(token);
-
-        if (error || !data.user) {
-          this.logger?.error('Supabase JWT verification failed', {
-            error: error?.message,
-          });
-          throw new AuthError(
-            'Invalid token',
-            'INVALID_TOKEN',
-            error?.message || 'Token verification failed',
-            'Ensure the token is valid and not expired'
-          );
-        }
-
-        const payload = JSON.parse(
-          Buffer.from(token.split('.')[1], 'base64').toString()
-        ) as JWTPayload;
-
-        this.validateStandardClaims(payload);
-
-        // Create normalized auth context using the existing normalizeClaims method
-        const context = this.normalizeClaims(payload);
-
-        // Verify user has access to current service
-        if (!context.apps.includes(this.config.serviceName)) {
-          this.logger?.warn('Token verification denied - no service access', {
-            userId: context.userId,
-            serviceName: this.config.serviceName,
-            userServices: context.apps,
-          });
-          return {
-            success: false,
-            error: new PermissionError(
-              'Access denied to service',
-              'SERVICE_ACCESS_DENIED',
-              `User not authorized for service: ${this.config.serviceName}`,
-              'Contact administrator to grant service access'
-            ),
-          };
-        }
-
-        // Log successful verification
-        this.logger?.info('Token verified successfully', {
-          userId: context.userId,
-          sessionId: context.sessionId,
-          serviceName: this.config.serviceName,
-          decision: 'allow',
-        });
-
-        return { success: true, context };
-      }
-
-      // For RSA tokens, use JWKS verification
       const signingKey = await this.getSigningKey(header.kid ?? '', header.alg);
 
-      // Determine supported algorithms based on token type
-      const algorithms = ['RS256', 'RS384', 'RS512'];
+      const algorithms = ['RS256', 'RS384', 'RS512', 'HS256', 'HS384', 'HS512'];
 
-      // Verify token signature and parse payload
       const payload = jwt.verify(token, signingKey, {
         algorithms: algorithms as jwt.Algorithm[],
         issuer: this.config.issuer,
@@ -765,22 +709,15 @@ export class AuthSDK {
     algorithm?: string
   ): Promise<string> {
     try {
-      // For HMAC algorithms (HS256, HS384, HS512), use the anon key directly
       if (algorithm && algorithm.startsWith('HS')) {
-        this.logger?.debug('Using anon key for HMAC token verification', {
+        this.logger?.debug('Using service key for HMAC token verification', {
           kid,
           algorithm,
         });
-        // Extract the JWT secret from the anon key (the part after the last dot)
-        const anonKeyParts = process.env.SUPABASE_ANON_KEY?.split('.');
-        if (anonKeyParts && anonKeyParts.length === 3) {
-          return anonKeyParts[2]; // Use the signature part as the secret
-        }
-        // Fallback to service key if anon key parsing fails
+
         return this.config.supabaseServiceKey;
       }
 
-      // For RSA algorithms, use JWKS
       if (!this.jwksClient) {
         const jwksClientModule = await getJwksClient();
         const clientFactory = jwksClientModule.default || jwksClientModule;
