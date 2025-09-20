@@ -1,74 +1,295 @@
-/**
- * Core AuthSDK class for JWT verification and authorization
- */
-
+import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
-import {
-  type AuthConfig,
-  type AuthContext,
-  type JWTPayload,
-  type TokenVerificationResult,
-  type AssertionOptions,
-  type RoleAssertionOptions,
-  type AALAssertionOptions,
-  AuthError,
-  PermissionError,
-  TokenFreshnessError,
-  ConfigError,
-  type Logger,
+import type {
+  MicroserviceAuthConfig,
+  MicroserviceSignupOptions,
+  MicroserviceSigninOptions,
+  ServiceManagementOptions,
+  MicroserviceMiddlewareOptions,
+  AuthContext,
+  JWTPayload,
+  TokenVerificationResult,
+  SessionData,
+  Logger,
+  User,
+  ExpressRequest,
+  ExpressResponse,
+  ExpressNextFunction,
+  JWKSClient,
 } from "./types";
-
-// Dynamic import wrapper for jwks-client to support both CommonJS and ESM
-let jwksClientModule: any = null;
-
-async function getJwksClient() {
-  if (!jwksClientModule) {
-    jwksClientModule = await import("jwks-client");
-  }
-  return jwksClientModule.default || jwksClientModule;
-}
+import { AuthError, PermissionError, ConfigError } from "./errors";
+import { getJwksClient } from "./jwks-client";
 
 /**
- * Main AuthSDK class for token verification and authorization
+ * MicroserviceAuthSDK for server-side microservice authentication
+ *
+ * This class provides centralized user management across multiple microservices
+ * using Supabase Auth with service-scoped access control.
  */
 export class AuthSDK {
-  private readonly config: AuthConfig;
-  private jwksClient: any = null;
+  private readonly config: MicroserviceAuthConfig;
+  private readonly supabase;
+  private jwksClient: JWKSClient | null = null;
   private readonly logger?: Logger;
 
-  constructor(config: AuthConfig) {
+  private static AUTH_CONFIG = {
+    autoRefreshToken: false,
+    persistSession: false,
+  };
+
+  private static PASSWORD_MIN_LENGTH = 6;
+
+  constructor(config: MicroserviceAuthConfig) {
     this.config = config;
     this.logger = config.logger;
 
-    // Validate configuration
     this.validateConfig();
-  }
 
-  private async initializeJwksClient() {
-    if (!this.jwksClient) {
-      const jwksClientModule = await getJwksClient();
-      this.jwksClient = jwksClientModule({
-        jwksUri: this.config.jwksUri,
-        cache: false,
-      });
-    }
-    return this.jwksClient;
+    this.supabase = createClient(
+      config.supabaseUrl,
+      config.supabaseServiceKey,
+      {
+        auth: AuthSDK.AUTH_CONFIG,
+      }
+    );
   }
 
   /**
-   * Verify JWT token and return normalized auth context
+   * Sign up a new user and grant access to current service
    */
-  async verifyToken(token: string): Promise<TokenVerificationResult> {
+  public async signUp(
+    options: MicroserviceSignupOptions
+  ): Promise<
+    { success: true; user: User } | { success: false; error: AuthError }
+  > {
     try {
-      // Parse token header to get key ID
+      this.validateSignupOptions(options);
+
+      const user = {
+        email: options.email,
+        password: options.password,
+        email_confirm: false,
+        app_metadata: {
+          services: [this.config.serviceName],
+          roles: {
+            [this.config.serviceName]: "user",
+          },
+        },
+        user_metadata: {
+          ...options.userData,
+          last_seen: new Date().toISOString(),
+        },
+      };
+
+      if (this.config.shouldVerifyEmail !== undefined) {
+        user.email_confirm = this.config.shouldVerifyEmail;
+      }
+
+      const { data, error } = await this.supabase.auth.admin.createUser(user);
+
+      if (error) {
+        this.logger?.error("User signup failed", {
+          email: options.email,
+          serviceName: this.config.serviceName,
+          error: error.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            "Signup failed",
+            "SIGNUP_ERROR",
+            error.message,
+            "Check email format and password requirements"
+          ),
+        };
+      }
+
+      this.logger?.info("User signed up successfully", {
+        userId: data.user?.id,
+        email: options.email,
+        serviceName: this.config.serviceName,
+      });
+
+      return {
+        success: true,
+        user: data.user as User,
+      };
+    } catch (error) {
+      this.logger?.error("Signup error", {
+        email: options.email,
+        serviceName: this.config.serviceName,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          "Signup failed",
+          "SIGNUP_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Check network connection and try again"
+        ),
+      };
+    }
+  }
+
+  /**
+   * Sign in user and verify service access
+   */
+  public async signIn(
+    options: MicroserviceSigninOptions
+  ): Promise<
+    | { success: true; user: User; session: SessionData | null }
+    | { success: false; error: AuthError | PermissionError }
+  > {
+    try {
+      this.validateSigninOptions(options);
+
+      const { data, error } = await this.supabase.auth.signInWithPassword({
+        email: options.email,
+        password: options.password,
+      });
+
+      if (error) {
+        this.logger?.error("User signin failed", {
+          email: options.email,
+          serviceName: this.config.serviceName,
+          error: error.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            "Signin failed",
+            "SIGNIN_ERROR",
+            error.message,
+            "Check email and password"
+          ),
+        };
+      }
+
+      const userServices = data.user?.app_metadata?.services || [];
+      if (!userServices.includes(this.config.serviceName)) {
+        this.logger?.warn("User signin denied - no service access", {
+          userId: data.user?.id,
+          email: options.email,
+          serviceName: this.config.serviceName,
+          userServices,
+        });
+        return {
+          success: false,
+          error: new PermissionError(
+            "Access denied to service",
+            "SERVICE_ACCESS_DENIED",
+            `User not authorized for service: ${this.config.serviceName}`,
+            "Contact administrator to grant service access"
+          ),
+        };
+      }
+
+      await this.updateUserLastSeen(data.user.id);
+
+      this.logger?.info("User signed in successfully", {
+        userId: data.user?.id,
+        email: options.email,
+        serviceName: this.config.serviceName,
+      });
+
+      return {
+        success: true,
+        user: data.user as User,
+        session: data.session as SessionData | null,
+      };
+    } catch (error) {
+      this.logger?.error("Signin error", {
+        email: options.email,
+        serviceName: this.config.serviceName,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          "Signin failed",
+          "SIGNIN_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Check network connection and try again"
+        ),
+      };
+    }
+  }
+
+  /**
+   * Verify JWT token and check service access
+   */
+  public async verifyToken(token: string): Promise<TokenVerificationResult> {
+    try {
       const header = this.parseTokenHeader(token);
 
-      // Get signing key from JWKS
-      const signingKey = await this.getSigningKey(header.kid ?? "");
+      if (header.alg?.startsWith("HS")) {
+        this.logger?.debug("Using Supabase API for HMAC token verification", {
+          kid: header.kid,
+          algorithm: header.alg,
+        });
+
+        const { data, error } = await this.supabase.auth.getUser(token);
+
+        if (error || !data.user) {
+          this.logger?.error("Supabase JWT verification failed", {
+            error: error?.message,
+          });
+          throw new AuthError(
+            "Invalid token",
+            "INVALID_TOKEN",
+            error?.message || "Token verification failed",
+            "Ensure the token is valid and not expired"
+          );
+        }
+
+        const payload = JSON.parse(
+          Buffer.from(token.split(".")[1], "base64").toString()
+        ) as JWTPayload;
+
+        this.validateStandardClaims(payload);
+
+        // Create normalized auth context using the existing normalizeClaims method
+        const context = this.normalizeClaims(payload);
+
+        // Verify user has access to current service
+        if (!context.apps.includes(this.config.serviceName)) {
+          this.logger?.warn("Token verification denied - no service access", {
+            userId: context.userId,
+            serviceName: this.config.serviceName,
+            userServices: context.apps,
+          });
+          return {
+            success: false,
+            error: new PermissionError(
+              "Access denied to service",
+              "SERVICE_ACCESS_DENIED",
+              `User not authorized for service: ${this.config.serviceName}`,
+              "Contact administrator to grant service access"
+            ),
+          };
+        }
+
+        // Log successful verification
+        this.logger?.info("Token verified successfully", {
+          userId: context.userId,
+          sessionId: context.sessionId,
+          serviceName: this.config.serviceName,
+          decision: "allow",
+        });
+
+        return { success: true, context };
+      }
+
+      // For RSA tokens, use JWKS verification
+      const signingKey = await this.getSigningKey(header.kid ?? "", header.alg);
+
+      // Determine supported algorithms based on token type
+      const algorithms = ["RS256", "RS384", "RS512"];
 
       // Verify token signature and parse payload
       const payload = jwt.verify(token, signingKey, {
-        algorithms: ["RS256"],
+        algorithms: algorithms as any,
         issuer: this.config.issuer,
         audience: Array.isArray(this.config.expectedAudience)
           ? this.config.expectedAudience[0]
@@ -76,13 +297,27 @@ export class AuthSDK {
         clockTolerance: this.config.clockSkewTolerance ?? 30,
       }) as unknown as JWTPayload;
 
-      // Validate standard claims
       this.validateStandardClaims(payload);
 
-      // Create normalized auth context
       const context = this.normalizeClaims(payload);
 
-      // Log successful verification
+      if (!context.apps.includes(this.config.serviceName)) {
+        this.logger?.warn("Token verification denied - no service access", {
+          userId: context.userId,
+          serviceName: this.config.serviceName,
+          userServices: context.apps,
+        });
+        return {
+          success: false,
+          error: new PermissionError(
+            "Access denied to service",
+            "SERVICE_ACCESS_DENIED",
+            `User not authorized for service: ${this.config.serviceName}`,
+            "Contact administrator to grant service access"
+          ),
+        };
+      }
+
       this.logger?.info("Token verified successfully", {
         userId: context.userId,
         sessionId: context.sessionId,
@@ -97,136 +332,387 @@ export class AuthSDK {
   }
 
   /**
-   * Assert that user has access to the current service
+   * Sign out user (revoke session)
    */
-  async assertAppAccess(
-    context: AuthContext,
-    options: AssertionOptions = {}
-  ): Promise<void> {
-    const logger = options.logger ?? this.logger;
+  public async signOut(
+    userId: string
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      const { error } = await this.supabase.auth.admin.signOut(userId);
 
-    if (!context.apps.includes(this.config.serviceName)) {
-      const error = new PermissionError(
-        "User not authorized for this service",
-        "APP_ACCESS_DENIED",
-        `User ${context.userId} not member of service ${this.config.serviceName}`,
-        "Add user to service membership or check service configuration"
-      );
+      if (error) {
+        this.logger?.error("User signout failed", {
+          userId,
+          serviceName: this.config.serviceName,
+          error: error.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            "Signout failed",
+            "SIGNOUT_ERROR",
+            error.message,
+            "Try refreshing the page"
+          ),
+        };
+      }
 
-      logger?.warn("App access denied", {
-        userId: context.userId,
+      this.logger?.info("User signed out successfully", {
+        userId,
         serviceName: this.config.serviceName,
-        userApps: context.apps,
-        decision: "deny",
-        reason: error.reason,
       });
 
-      throw error;
+      return { success: true };
+    } catch (error) {
+      this.logger?.error("Signout error", {
+        userId,
+        serviceName: this.config.serviceName,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          "Signout failed",
+          "SIGNOUT_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Try refreshing the page"
+        ),
+      };
     }
-
-    // Optional session existence check
-    if (options.requireSession && context.sessionId) {
-      await this.checkSessionExists(context.sessionId, logger);
-    }
-
-    logger?.info("App access granted", {
-      userId: context.userId,
-      serviceName: this.config.serviceName,
-      decision: "allow",
-    });
   }
 
   /**
-   * Assert that user has specific role
+   * Add user to a service
    */
-  async assertRole(
-    context: AuthContext,
-    role: string,
-    options: RoleAssertionOptions = {}
-  ): Promise<void> {
-    const logger = options.logger ?? this.logger;
-    const appScoped = options.appScoped ?? true;
+  public async addUserToService(
+    options: ServiceManagementOptions
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      const { data: userData, error: getUserError } =
+        await this.supabase.auth.admin.getUserById(options.userId);
 
-    let userRole: string | undefined;
+      if (getUserError) {
+        return {
+          success: false,
+          error: new AuthError(
+            "Failed to get user",
+            "USER_NOT_FOUND",
+            getUserError.message,
+            "Check user ID"
+          ),
+        };
+      }
 
-    if (appScoped) {
-      userRole = context.roles[this.config.serviceName];
-    } else {
-      // Check if user has role in any app
-      userRole = Object.values(context.roles).find((r) => r === role);
-    }
+      const currentServices = userData.user?.app_metadata?.services || [];
+      const currentRoles = userData.user?.app_metadata?.roles || {};
 
-    if (userRole !== role) {
-      const error = new PermissionError(
-        "Insufficient role permissions",
-        "ROLE_ACCESS_DENIED",
-        `User ${context.userId} has role '${userRole}' but '${role}' required`,
-        "Assign required role to user or check role configuration"
-      );
+      if (!currentServices.includes(options.serviceName)) {
+        const updatedServices = [...currentServices, options.serviceName];
+        const updatedRoles = {
+          ...currentRoles,
+          [options.serviceName]: options.role || "user",
+        };
 
-      logger?.warn("Role access denied", {
-        userId: context.userId,
-        requiredRole: role,
-        userRole,
-        serviceName: this.config.serviceName,
-        decision: "deny",
-        reason: error.reason,
+        const { error: updateError } =
+          await this.supabase.auth.admin.updateUserById(options.userId, {
+            app_metadata: {
+              services: updatedServices,
+              roles: updatedRoles,
+            },
+          });
+
+        if (updateError) {
+          return {
+            success: false,
+            error: new AuthError(
+              "Failed to add user to service",
+              "SERVICE_ADD_ERROR",
+              updateError.message,
+              "Check service name and try again"
+            ),
+          };
+        }
+      }
+
+      this.logger?.info("User added to service", {
+        userId: options.userId,
+        serviceName: options.serviceName,
+        role: options.role || "user",
       });
 
-      throw error;
+      return { success: true };
+    } catch (error) {
+      this.logger?.error("Add user to service error", {
+        userId: options.userId,
+        serviceName: options.serviceName,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          "Failed to add user to service",
+          "SERVICE_ADD_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Check network connection and try again"
+        ),
+      };
     }
-
-    // Optional session existence check
-    if (options.requireSession && context.sessionId) {
-      await this.checkSessionExists(context.sessionId, logger);
-    }
-
-    logger?.info("Role access granted", {
-      userId: context.userId,
-      role,
-      serviceName: this.config.serviceName,
-      decision: "allow",
-    });
   }
 
   /**
-   * Assert Authentication Assurance Level (AAL)
+   * Remove user from a service
    */
-  async assertAAL(
-    context: AuthContext,
-    requiredAAL: "aal1" | "aal2" | "aal3",
-    options: AALAssertionOptions = {}
-  ): Promise<void> {
-    const logger = options.logger ?? this.logger;
-    const allowHigher = options.allowHigher ?? true;
+  public async removeUserFromService(
+    options: ServiceManagementOptions
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      const { data: userData, error: getUserError } =
+        await this.supabase.auth.admin.getUserById(options.userId);
 
-    const userAAL = context.aal ?? "aal1";
+      if (getUserError) {
+        return {
+          success: false,
+          error: new AuthError(
+            "Failed to get user",
+            "USER_NOT_FOUND",
+            getUserError.message,
+            "Check user ID"
+          ),
+        };
+      }
 
-    if (!this.isAALSufficient(userAAL, requiredAAL, allowHigher)) {
-      const error = new TokenFreshnessError(
-        "Insufficient authentication assurance level",
-        "AAL_REQUIREMENT_NOT_MET",
-        `User AAL '${userAAL}' does not meet requirement '${requiredAAL}'`,
-        "User must authenticate with higher assurance level (e.g., MFA)"
-      );
+      const currentServices = userData.user?.app_metadata?.services || [];
+      const currentRoles = userData.user?.app_metadata?.roles || {};
 
-      logger?.warn("AAL requirement not met", {
-        userId: context.userId,
-        requiredAAL,
-        userAAL,
-        decision: "deny",
-        reason: error.reason,
+      if (currentServices.includes(options.serviceName)) {
+        const updatedServices = currentServices.filter(
+          (service: string) => service !== options.serviceName
+        );
+        const updatedRoles = { ...currentRoles };
+        delete updatedRoles[options.serviceName];
+
+        const { error: updateError } =
+          await this.supabase.auth.admin.updateUserById(options.userId, {
+            app_metadata: {
+              services: updatedServices,
+              roles: updatedRoles,
+            },
+          });
+
+        if (updateError) {
+          return {
+            success: false,
+            error: new AuthError(
+              "Failed to remove user from service",
+              "SERVICE_REMOVE_ERROR",
+              updateError.message,
+              "Check service name and try again"
+            ),
+          };
+        }
+      }
+
+      this.logger?.info("User removed from service", {
+        userId: options.userId,
+        serviceName: options.serviceName,
       });
 
-      throw error;
+      return { success: true };
+    } catch (error) {
+      this.logger?.error("Remove user from service error", {
+        userId: options.userId,
+        serviceName: options.serviceName,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          "Failed to remove user from service",
+          "SERVICE_REMOVE_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Check network connection and try again"
+        ),
+      };
     }
+  }
 
-    logger?.info("AAL requirement satisfied", {
-      userId: context.userId,
-      requiredAAL,
-      userAAL,
-      decision: "allow",
-    });
+  /**
+   * Get user's services
+   */
+  public async getUserServices(userId: string): Promise<{
+    services: string[];
+    roles: Record<string, string>;
+    error?: AuthError;
+  }> {
+    try {
+      const { data: userData, error: getUserError } =
+        await this.supabase.auth.admin.getUserById(userId);
+
+      if (getUserError) {
+        return {
+          services: [],
+          roles: {},
+          error: new AuthError(
+            "Failed to get user",
+            "USER_NOT_FOUND",
+            getUserError.message,
+            "Check user ID"
+          ),
+        };
+      }
+
+      const services = userData.user?.app_metadata?.services || [];
+      const roles = userData.user?.app_metadata?.roles || {};
+
+      return { services, roles };
+    } catch (error) {
+      this.logger?.error("Get user services error", {
+        userId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        services: [],
+        roles: {},
+        error: new AuthError(
+          "Failed to get user services",
+          "GET_SERVICES_ERROR",
+          error instanceof Error ? error.message : "Unknown error",
+          "Check network connection and try again"
+        ),
+      };
+    }
+  }
+
+  /**
+   * Create Express middleware for authentication
+   */
+  public middleware(options: MicroserviceMiddlewareOptions = {}) {
+    const {
+      requireAuth = true,
+      requireRole,
+      requireAAL,
+      allowServiceAccounts = false,
+      updateLastSeen = true,
+    } = options;
+
+    return async (
+      req: ExpressRequest,
+      res: ExpressResponse,
+      next: ExpressNextFunction
+    ) => {
+      try {
+        if (!requireAuth) {
+          return next();
+        }
+
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("X-Frame-Options", "DENY");
+        res.setHeader("X-XSS-Protection", "1; mode=block");
+
+        const authHeader = req.headers.authorization;
+        if (
+          !authHeader ||
+          typeof authHeader !== "string" ||
+          !authHeader.startsWith("Bearer ")
+        ) {
+          return res.status(401).json({
+            error: "Missing or invalid authorization header",
+            code: "MISSING_TOKEN",
+          });
+        }
+
+        const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+        const result = await this.verifyToken(token);
+        if (!result.success) {
+          return res.status(401).json({
+            error: result.error.message,
+            code: result.error.reason,
+          });
+        }
+
+        const context = result.context;
+
+        if (context.isServiceAccount && !allowServiceAccounts) {
+          return res.status(403).json({
+            error: "Service accounts not allowed",
+            code: "SERVICE_ACCOUNT_DENIED",
+          });
+        }
+
+        if (requireRole) {
+          const userRole = context.roles[this.config.serviceName];
+          if (userRole !== requireRole) {
+            return res.status(403).json({
+              error: `Required role: ${requireRole}, user role: ${userRole}`,
+              code: "INSUFFICIENT_ROLE",
+            });
+          }
+        }
+
+        if (requireAAL) {
+          const userAAL = context.aal || "aal1";
+          const aalLevels = { aal1: 1, aal2: 2, aal3: 3 };
+          const userLevel = aalLevels[userAAL as keyof typeof aalLevels] || 1;
+          const requiredLevel = aalLevels[requireAAL];
+
+          if (userLevel < requiredLevel) {
+            return res.status(403).json({
+              error: `Required AAL: ${requireAAL}, user AAL: ${userAAL}`,
+              code: "INSUFFICIENT_AAL",
+            });
+          }
+        }
+
+        if (updateLastSeen) {
+          this.updateUserLastSeen(context.userId).catch((err) => {
+            this.logger?.warn("Failed to update last seen", {
+              userId: context.userId,
+              error: err.message,
+            });
+          });
+        }
+
+        // Attach user context to request
+        (req as any).user = context;
+        (req as any).session = { access_token: token };
+
+        next();
+      } catch (error) {
+        this.logger?.error("Middleware error", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        return res.status(500).json({
+          error: "Internal server error",
+          code: "MIDDLEWARE_ERROR",
+        });
+      }
+    };
+  }
+
+  /**
+   * Update user's last seen timestamp
+   */
+  private async updateUserLastSeen(userId: string): Promise<void> {
+    try {
+      const { data: userData } =
+        await this.supabase.auth.admin.getUserById(userId);
+      if (userData.user) {
+        const currentMetadata = userData.user.user_metadata || {};
+        await this.supabase.auth.admin.updateUserById(userId, {
+          user_metadata: {
+            ...currentMetadata,
+            last_seen: new Date().toISOString(),
+          },
+        });
+      }
+    } catch (error) {
+      // Don't throw - this is a non-critical operation
+      this.logger?.warn("Failed to update last seen", {
+        userId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
   }
 
   /**
@@ -270,16 +756,43 @@ export class AuthSDK {
   }
 
   /**
-   * Get signing key from JWKS
+   * Get signing key from JWKS or use service key for HMAC
    */
-  private async getSigningKey(kid: string): Promise<string> {
+  private async getSigningKey(
+    kid: string,
+    algorithm?: string
+  ): Promise<string> {
     try {
-      const jwksClient = await this.initializeJwksClient();
-      const key = await jwksClient.getSigningKey(kid);
+      // For HMAC algorithms (HS256, HS384, HS512), use the anon key directly
+      if (algorithm && algorithm.startsWith("HS")) {
+        this.logger?.debug("Using anon key for HMAC token verification", {
+          kid,
+          algorithm,
+        });
+        // Extract the JWT secret from the anon key (the part after the last dot)
+        const anonKeyParts = process.env.SUPABASE_ANON_KEY?.split(".");
+        if (anonKeyParts && anonKeyParts.length === 3) {
+          return anonKeyParts[2]; // Use the signature part as the secret
+        }
+        // Fallback to service key if anon key parsing fails
+        return this.config.supabaseServiceKey;
+      }
+
+      // For RSA algorithms, use JWKS
+      if (!this.jwksClient) {
+        const jwksClientModule = await getJwksClient();
+        const clientFactory = jwksClientModule.default || jwksClientModule;
+        this.jwksClient = clientFactory({
+          jwksUri: this.config.jwksUri,
+          cache: false,
+        });
+      }
+      const key = await this.jwksClient!.getSigningKey(kid);
       return key.getPublicKey();
     } catch (error) {
       this.logger?.error("Failed to get signing key", {
         kid,
+        algorithm,
         error: error instanceof Error ? error.message : "Unknown error",
       });
       throw new AuthError(
@@ -295,7 +808,6 @@ export class AuthSDK {
    * Validate standard JWT claims
    */
   private validateStandardClaims(payload: JWTPayload): void {
-    // Check role
     if (payload.role !== "authenticated") {
       throw new AuthError(
         "Invalid token role",
@@ -305,7 +817,6 @@ export class AuthSDK {
       );
     }
 
-    // Check expiration with clock skew tolerance
     const now = Math.floor(Date.now() / 1000);
     const clockSkew = this.config.clockSkewTolerance ?? 30;
 
@@ -318,7 +829,6 @@ export class AuthSDK {
       );
     }
 
-    // Check issued at time (not in the future beyond clock skew)
     if (payload.iat > now + clockSkew) {
       throw new AuthError(
         "Token issued in the future",
@@ -334,7 +844,7 @@ export class AuthSDK {
    */
   private normalizeClaims(payload: JWTPayload): AuthContext {
     const appMetadata = payload.app_metadata ?? {};
-    const apps = appMetadata.apps ?? [];
+    const apps = appMetadata.services ?? [];
     const roles = appMetadata.roles ?? {};
     const isServiceAccount = appMetadata.is_service_account ?? false;
 
@@ -354,56 +864,14 @@ export class AuthSDK {
   }
 
   /**
-   * Check if AAL level is sufficient
-   */
-  private isAALSufficient(
-    userAAL: string,
-    requiredAAL: string,
-    allowHigher: boolean
-  ): boolean {
-    const aalLevels = { aal1: 1, aal2: 2, aal3: 3 };
-    const userLevel = aalLevels[userAAL as keyof typeof aalLevels] ?? 1;
-    const requiredLevel = aalLevels[requiredAAL as keyof typeof aalLevels] ?? 1;
-
-    if (allowHigher) {
-      return userLevel >= requiredLevel;
-    }
-    return userLevel === requiredLevel;
-  }
-
-  /**
-   * Check if session still exists (for instant logout effect)
-   */
-  private async checkSessionExists(
-    sessionId: string,
-    logger?: Logger
-  ): Promise<void> {
-    if (typeof this.config.sessionCheck === "function") {
-      try {
-        const exists = await this.config.sessionCheck(sessionId);
-        if (!exists) {
-          throw new TokenFreshnessError(
-            "Session no longer exists",
-            "SESSION_REVOKED",
-            `Session ${sessionId} has been revoked`,
-            "User must re-authenticate"
-          );
-        }
-      } catch (error) {
-        logger?.error("Session check failed", {
-          sessionId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-        throw error;
-      }
-    }
-  }
-
-  /**
    * Handle verification errors and convert to appropriate SDK errors
    */
   private handleVerificationError(error: unknown): TokenVerificationResult {
-    if (error instanceof AuthError || error instanceof ConfigError) {
+    if (
+      error instanceof AuthError ||
+      error instanceof PermissionError ||
+      error instanceof ConfigError
+    ) {
       this.logger?.error("Token verification failed", {
         error: error.message,
         reason: error.reason,
@@ -481,9 +949,81 @@ export class AuthSDK {
   }
 
   /**
+   * Validate signup options
+   */
+  private validateSignupOptions(options: MicroserviceSignupOptions): void {
+    if (!options.email || !this.isValidEmail(options.email)) {
+      throw new AuthError(
+        "Invalid email address",
+        "INVALID_EMAIL",
+        "Email must be a valid email address",
+        "Provide a valid email address"
+      );
+    }
+
+    if (
+      !options.password ||
+      options.password.length < AuthSDK.PASSWORD_MIN_LENGTH
+    ) {
+      throw new AuthError(
+        "Invalid password",
+        "INVALID_PASSWORD",
+        `Password must be at least ${AuthSDK.PASSWORD_MIN_LENGTH} characters long`,
+        "Provide a stronger password"
+      );
+    }
+  }
+
+  /**
+   * Validate signin options
+   */
+  private validateSigninOptions(options: MicroserviceSigninOptions): void {
+    if (!options.email || !this.isValidEmail(options.email)) {
+      throw new AuthError(
+        "Invalid email address",
+        "INVALID_EMAIL",
+        "Email must be a valid email address",
+        "Provide a valid email address"
+      );
+    }
+
+    if (!options.password) {
+      throw new AuthError(
+        "Password required",
+        "MISSING_PASSWORD",
+        "Password is required for signin",
+        "Provide a password"
+      );
+    }
+  }
+
+  private isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  /**
    * Validate SDK configuration
    */
   private validateConfig(): void {
+    if (!this.config.supabaseUrl) {
+      throw new ConfigError(
+        "Missing Supabase URL",
+        "MISSING_SUPABASE_URL",
+        "Supabase URL is required",
+        "Set the Supabase project URL in SDK configuration"
+      );
+    }
+
+    if (!this.config.supabaseServiceKey) {
+      throw new ConfigError(
+        "Missing Supabase service key",
+        "MISSING_SERVICE_KEY",
+        "Supabase service role key is required",
+        "Set the Supabase service role key in SDK configuration"
+      );
+    }
+
     if (!this.config.issuer) {
       throw new ConfigError(
         "Missing issuer configuration",
@@ -506,7 +1046,7 @@ export class AuthSDK {
       throw new ConfigError(
         "Missing service name configuration",
         "MISSING_SERVICE_NAME",
-        "Service name is required for app membership checks",
+        "Service name is required for microservice authentication",
         "Set the current microservice name in SDK configuration"
       );
     }
