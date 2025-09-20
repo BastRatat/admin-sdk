@@ -66,11 +66,12 @@ export type AuthContext = {
 };
 
 /**
- * Microservice authentication configuration
+ * Authentication configuration
  */
-export type MicroserviceAuthConfig = {
+export type AuthConfig = {
   readonly supabaseUrl: string;
   readonly supabaseServiceKey: string;
+  readonly supabaseJwtSecret?: string; // Legacy JWT secret for HS256 verification
   readonly issuer: string; // Supabase Auth URL (e.g., https://project.supabase.co/auth/v1)
   readonly jwksUri: string; // JWKS endpoint URL
   readonly expectedAudience: string | string[]; // Expected audience (usually 'authenticated')
@@ -79,7 +80,6 @@ export type MicroserviceAuthConfig = {
   readonly jwksCacheTtl?: number; // JWKS cache TTL in seconds (default: 300)
   readonly clockSkewTolerance?: number; // Clock skew tolerance in seconds (default: 30)
   readonly logger?: Logger;
-  readonly shouldVerifyEmail?: boolean;
 };
 
 /**
@@ -176,7 +176,7 @@ export type UserInviteOptions = {
 /**
  * Microservice signup options
  */
-export type MicroserviceSignupOptions = {
+export type SignupOptions = {
   readonly email: string;
   readonly password: string;
   readonly userData?: {
@@ -191,7 +191,7 @@ export type MicroserviceSignupOptions = {
 /**
  * Microservice signin options
  */
-export type MicroserviceSigninOptions = {
+export type SigninOptions = {
   readonly email: string;
   readonly password: string;
 };
@@ -278,29 +278,6 @@ export type ClientAuthConfig = {
   readonly supabaseUrl: string;
   readonly supabaseAnonKey: string; // Anon key for client-side operations
   readonly logger?: Logger;
-};
-
-/**
- * Signup options
- */
-export type SignupOptions = {
-  readonly email: string;
-  readonly password: string;
-  readonly options?: {
-    readonly data?: Record<string, unknown>;
-    readonly captchaToken?: string;
-  };
-};
-
-/**
- * Signin options
- */
-export type SigninOptions = {
-  readonly email: string;
-  readonly password: string;
-  readonly options?: {
-    readonly captchaToken?: string;
-  };
 };
 
 /**

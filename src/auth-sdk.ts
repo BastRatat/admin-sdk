@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
 import type {
-  MicroserviceAuthConfig,
-  MicroserviceSignupOptions,
-  MicroserviceSigninOptions,
+  AuthConfig,
+  SignupOptions,
+  SigninOptions,
   ServiceManagementOptions,
   MicroserviceMiddlewareOptions,
   AuthContext,
@@ -21,13 +21,13 @@ import { AuthError, PermissionError, ConfigError } from './errors';
 import { getJwksClient } from './jwks-client';
 
 /**
- * MicroserviceAuthSDK for server-side microservice authentication
+ * AuthSDK for server-side microservice authentication
  *
  * This class provides centralized user management across multiple microservices
  * using Supabase Auth with service-scoped access control.
  */
 export class AuthSDK {
-  private readonly config: MicroserviceAuthConfig;
+  private readonly config: AuthConfig;
   private readonly supabase;
   private jwksClient: JWKSClient | null = null;
   private readonly logger?: Logger;
@@ -39,7 +39,7 @@ export class AuthSDK {
 
   private static PASSWORD_MIN_LENGTH = 6;
 
-  constructor(config: MicroserviceAuthConfig) {
+  constructor(config: AuthConfig) {
     this.config = config;
     this.logger = config.logger;
 
@@ -58,7 +58,7 @@ export class AuthSDK {
    * Sign up a new user and grant access to current service
    */
   public async signUp(
-    options: MicroserviceSignupOptions
+    options: SignupOptions
   ): Promise<
     { success: true; user: User } | { success: false; error: AuthError }
   > {
@@ -68,7 +68,7 @@ export class AuthSDK {
       const user = {
         email: options.email,
         password: options.password,
-        email_confirm: false,
+        email_confirm: true,
         app_metadata: {
           services: [this.config.serviceName],
           roles: {
@@ -80,10 +80,6 @@ export class AuthSDK {
           last_seen: new Date().toISOString(),
         },
       };
-
-      if (this.config.shouldVerifyEmail !== undefined) {
-        user.email_confirm = this.config.shouldVerifyEmail;
-      }
 
       const { data, error } = await this.supabase.auth.admin.createUser(user);
 
@@ -136,7 +132,7 @@ export class AuthSDK {
    * Sign in user and verify service access
    */
   public async signIn(
-    options: MicroserviceSigninOptions
+    options: SigninOptions
   ): Promise<
     | { success: true; user: User; session: SessionData | null }
     | { success: false; error: AuthError | PermissionError }
@@ -230,14 +226,16 @@ export class AuthSDK {
 
       const signingKey = await this.getSigningKey(header.kid ?? '', header.alg);
 
-      const algorithms = ['RS256', 'RS384', 'RS512', 'HS256', 'HS384', 'HS512'];
+      const algs = header.alg?.startsWith('HS')
+        ? (['HS256', 'HS384', 'HS512'] as jwt.Algorithm[])
+        : (['RS256', 'RS384', 'RS512'] as jwt.Algorithm[]);
 
       const payload = jwt.verify(token, signingKey, {
-        algorithms: algorithms as jwt.Algorithm[],
+        algorithms: algs,
         issuer: this.config.issuer,
         audience: Array.isArray(this.config.expectedAudience)
           ? this.config.expectedAudience[0]
-          : this.config.expectedAudience,
+          : (this.config.expectedAudience ?? 'authenticated'),
         clockTolerance: this.config.clockSkewTolerance ?? 30,
       }) as unknown as JWTPayload;
 
@@ -707,15 +705,36 @@ export class AuthSDK {
   private async getSigningKey(
     kid: string,
     algorithm?: string
-  ): Promise<string> {
+  ): Promise<string | Buffer> {
     try {
-      if (algorithm && algorithm.startsWith('HS')) {
-        this.logger?.debug('Using service key for HMAC token verification', {
+      if (algorithm?.startsWith('HS')) {
+        const secret = this.config.supabaseJwtSecret;
+        if (!secret) {
+          throw new ConfigError(
+            'Missing legacy JWT secret',
+            'MISSING_JWT_SECRET',
+            'Set config.supabaseJwtSecret or SUPABASE_JWT_SECRET for HS256 verification',
+            'In Supabase Studio: Project Settings → API → JWT Settings → JWT secret'
+          );
+        }
+
+        this.logger?.debug('Using Legacy JWT secret for HS256 verification', {
           kid,
           algorithm,
+          secretLength: secret.length,
         });
 
-        return this.config.supabaseServiceKey;
+        const looksBase64 =
+          /^[A-Za-z0-9_\-+/=]+$/.test(secret) && secret.length % 4 === 0;
+
+        this.logger?.debug('Secret format analysis', {
+          looksBase64,
+          secretLength: secret.length,
+          firstChars: secret.substring(0, 10),
+        });
+
+        this.logger?.debug('Using raw secret string');
+        return secret;
       }
 
       if (!this.jwksClient) {
@@ -898,7 +917,7 @@ export class AuthSDK {
   /**
    * Validate signup options
    */
-  private validateSignupOptions(options: MicroserviceSignupOptions): void {
+  private validateSignupOptions(options: SignupOptions): void {
     if (!options.email || !this.isValidEmail(options.email)) {
       throw new AuthError(
         'Invalid email address',
@@ -924,7 +943,7 @@ export class AuthSDK {
   /**
    * Validate signin options
    */
-  private validateSigninOptions(options: MicroserviceSigninOptions): void {
+  private validateSigninOptions(options: SigninOptions): void {
     if (!options.email || !this.isValidEmail(options.email)) {
       throw new AuthError(
         'Invalid email address',

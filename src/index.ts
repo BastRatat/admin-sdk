@@ -1,8 +1,8 @@
 export type {
   AuthContext,
-  MicroserviceAuthConfig,
-  MicroserviceSignupOptions,
-  MicroserviceSigninOptions,
+  AuthConfig,
+  SignupOptions,
+  SigninOptions,
   TokenVerificationResult,
 } from './types';
 
