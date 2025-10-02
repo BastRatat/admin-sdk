@@ -20,6 +20,7 @@ import type {
 } from './types';
 import { AuthError, PermissionError, ConfigError } from './errors';
 import { getJwksClient } from './jwks-client';
+import { isValidLanguageCode } from './language-utils';
 
 /**
  * AuthSDK for server-side microservice authentication
@@ -536,6 +537,23 @@ export class AuthSDK {
     options: OAuthMetadataOptions
   ): Promise<{ success: boolean; error?: AuthError }> {
     try {
+      // Validate ISO 639-1 language code
+      if (!isValidLanguageCode(options.language)) {
+        this.logger?.error('Invalid language code provided', {
+          userId: options.userId,
+          serviceName: options.serviceName,
+          language: options.language,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Invalid language code',
+            'INVALID_LANGUAGE_CODE',
+            `Language code '${options.language}' is not a valid ISO 639-1 code`,
+            'Use a valid 2-character language code (e.g., "en", "fr", "es")'
+          ),
+        };
+      }
       const { data: userData, error: getUserError } =
         await this.supabase.auth.admin.getUserById(options.userId);
 
@@ -561,11 +579,11 @@ export class AuthSDK {
       const currentServices = currentAppMetadata.services || [];
       const currentRoles = currentAppMetadata.roles || {};
 
-      // Add service_name to user metadata
       const updatedUserMetadata = {
         ...currentUserMetadata,
         service_name: options.serviceName,
         last_seen: new Date().toISOString(),
+        language: options.language,
       };
 
       // Add service to app metadata if not already present

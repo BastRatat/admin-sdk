@@ -211,6 +211,7 @@ export type ServiceManagementOptions = {
 export type OAuthMetadataOptions = {
   readonly userId: string;
   readonly serviceName: string;
+  readonly language: string; // ISO 639-1 language code (e.g., 'en', 'fr', 'es')
 };
 
 /**
