@@ -288,6 +288,7 @@ export type PasswordResetOptions = {
   readonly options?: {
     readonly redirectTo?: string;
     readonly captchaToken?: string;
+    readonly language?: string; // Language code (e.g., 'en', 'fr', 'es')
   };
 };
 

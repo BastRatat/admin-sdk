@@ -633,6 +633,40 @@ export class AuthSDK {
   }
 
   /**
+   * Construct redirectTo URL with language parameter
+   *
+   * @param baseUrl - Base redirect URL
+   * @param language - Language code to append as query parameter
+   * @returns URL with language parameter appended
+   *
+   * @example
+   * const url = authSDK.buildRedirectUrlWithLanguage(
+   *   'https://myapp.com/reset-password',
+   *   'fr'
+   * );
+   * // Returns: 'https://myapp.com/reset-password?lang=fr'
+   */
+  public buildRedirectUrlWithLanguage(
+    baseUrl: string,
+    language: string
+  ): string {
+    try {
+      const url = new URL(baseUrl);
+      url.searchParams.set('lang', language);
+      return url.toString();
+    } catch (error) {
+      this.logger?.warn('Invalid base URL provided for redirect', {
+        baseUrl,
+        language,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      // Fallback: append language parameter manually
+      const separator = baseUrl.includes('?') ? '&' : '?';
+      return `${baseUrl}${separator}lang=${encodeURIComponent(language)}`;
+    }
+  }
+
+  /**
    * Update user's last seen timestamp
    */
   private async updateUserLastSeen(userId: string): Promise<void> {
@@ -966,6 +1000,186 @@ export class AuthSDK {
   private isValidEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  }
+
+  /**
+   * Send password reset email with optional language support
+   *
+   * @param email - User's email address
+   * @param options - Configuration options including redirectTo and language
+   * @param options.redirectTo - Base redirect URL (language will be appended as query param)
+   * @param options.language - Language code (e.g., 'en', 'fr', 'es') to include in redirect URL
+   *
+   * @example
+   * // Basic usage
+   * await authSDK.forgotPassword('user@example.com', {
+   *   redirectTo: 'https://myapp.com/reset-password'
+   * });
+   *
+   * // With language support
+   * await authSDK.forgotPassword('user@example.com', {
+   *   redirectTo: 'https://myapp.com/reset-password',
+   *   language: 'fr'
+   * });
+   * // Results in: https://myapp.com/reset-password?lang=fr
+   */
+  public async forgotPassword(
+    email: string,
+    options?: { redirectTo?: string; language?: string }
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      if (!this.isValidEmail(email)) {
+        return {
+          success: false,
+          error: new AuthError(
+            'Invalid email address',
+            'INVALID_EMAIL',
+            'Email must be a valid email address',
+            'Provide a valid email address'
+          ),
+        };
+      }
+
+      let redirectToUrl = options?.redirectTo;
+      if (options?.language && options?.redirectTo) {
+        const url = new URL(options.redirectTo);
+        url.searchParams.set('lang', options.language);
+        redirectToUrl = url.toString();
+      }
+
+      const { error } = await this.supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectToUrl,
+      });
+
+      if (error) {
+        this.logger?.error('Password reset email failed', {
+          email,
+          serviceName: this.config.serviceName,
+          error: error.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Failed to send password reset email',
+            'PASSWORD_RESET_ERROR',
+            error.message,
+            'Check email address and try again'
+          ),
+        };
+      }
+
+      this.logger?.info('Password reset email sent successfully', {
+        email,
+        serviceName: this.config.serviceName,
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger?.error('Password reset error', {
+        email,
+        serviceName: this.config.serviceName,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          'Password reset failed',
+          'PASSWORD_RESET_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
+        ),
+      };
+    }
+  }
+
+  /**
+   * Update user password using reset token
+   */
+  public async resetPassword(
+    accessToken: string,
+    refreshToken: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      if (!newPassword || newPassword.length < AuthSDK.PASSWORD_MIN_LENGTH) {
+        return {
+          success: false,
+          error: new AuthError(
+            'Invalid password',
+            'INVALID_PASSWORD',
+            `Password must be at least ${AuthSDK.PASSWORD_MIN_LENGTH} characters long`,
+            'Provide a stronger password'
+          ),
+        };
+      }
+
+      // Set the session using the tokens from the reset link
+      const { data, error: sessionError } = await this.supabase.auth.setSession(
+        {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        }
+      );
+
+      if (sessionError || !data.user) {
+        this.logger?.error('Invalid reset session', {
+          serviceName: this.config.serviceName,
+          error: sessionError?.message || 'No user in session',
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Invalid or expired reset link',
+            'INVALID_RESET_TOKEN',
+            sessionError?.message || 'Reset link is invalid or expired',
+            'Request a new password reset link'
+          ),
+        };
+      }
+
+      // Update the password
+      const { error: updateError } = await this.supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        this.logger?.error('Password update failed', {
+          userId: data.user.id,
+          serviceName: this.config.serviceName,
+          error: updateError.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Failed to update password',
+            'PASSWORD_UPDATE_ERROR',
+            updateError.message,
+            'Try again or request a new reset link'
+          ),
+        };
+      }
+
+      this.logger?.info('Password updated successfully', {
+        userId: data.user.id,
+        serviceName: this.config.serviceName,
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger?.error('Password reset error', {
+        serviceName: this.config.serviceName,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          'Password reset failed',
+          'PASSWORD_RESET_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
+        ),
+      };
+    }
   }
 
   /**
