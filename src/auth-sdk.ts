@@ -5,6 +5,7 @@ import type {
   SignupOptions,
   SigninOptions,
   ServiceManagementOptions,
+  OAuthMetadataOptions,
   MicroserviceMiddlewareOptions,
   AuthContext,
   JWTPayload,
@@ -518,6 +519,113 @@ export class AuthSDK {
         error: new AuthError(
           'Failed to get user services',
           'GET_SERVICES_ERROR',
+          error instanceof Error ? error.message : 'Unknown error',
+          'Check network connection and try again'
+        ),
+      };
+    }
+  }
+
+  /**
+   * Update OAuth user metadata with service information
+   *
+   * This method is used to add service_name and other metadata to OAuth users
+   * who signed up through external providers (Google, GitHub, etc.)
+   */
+  public async updateOAuthUserMetadata(
+    options: OAuthMetadataOptions
+  ): Promise<{ success: boolean; error?: AuthError }> {
+    try {
+      const { data: userData, error: getUserError } =
+        await this.supabase.auth.admin.getUserById(options.userId);
+
+      if (getUserError) {
+        this.logger?.error('Failed to get OAuth user for metadata update', {
+          userId: options.userId,
+          serviceName: options.serviceName,
+          error: getUserError.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Failed to get user',
+            'USER_NOT_FOUND',
+            getUserError.message,
+            'Check user ID'
+          ),
+        };
+      }
+
+      const currentUserMetadata = userData.user?.user_metadata || {};
+      const currentAppMetadata = userData.user?.app_metadata || {};
+      const currentServices = currentAppMetadata.services || [];
+      const currentRoles = currentAppMetadata.roles || {};
+
+      const updatedUserMetadata = {
+        ...currentUserMetadata,
+        first_name: options.firstName,
+        last_name: options.lastName,
+        language: options.language,
+        service_name: options.serviceName,
+        last_seen: new Date().toISOString(),
+      };
+
+      const updatedServices = currentServices.includes(options.serviceName)
+        ? currentServices
+        : [...currentServices, options.serviceName];
+
+      const updatedRoles = {
+        ...currentRoles,
+        [options.serviceName]: currentRoles[options.serviceName] || 'user',
+      };
+
+      const { error: updateError } =
+        await this.supabase.auth.admin.updateUserById(options.userId, {
+          user_metadata: updatedUserMetadata,
+          app_metadata: {
+            ...currentAppMetadata,
+            services: updatedServices,
+            roles: updatedRoles,
+          },
+        });
+
+      if (updateError) {
+        this.logger?.error('Failed to update OAuth user metadata', {
+          userId: options.userId,
+          serviceName: options.serviceName,
+          error: updateError.message,
+        });
+        return {
+          success: false,
+          error: new AuthError(
+            'Failed to update user metadata',
+            'METADATA_UPDATE_ERROR',
+            updateError.message,
+            'Check user permissions and try again'
+          ),
+        };
+      }
+
+      this.logger?.info('OAuth user metadata updated successfully', {
+        userId: options.userId,
+        serviceName: options.serviceName,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        language: options.language,
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger?.error('OAuth metadata update error', {
+        userId: options.userId,
+        serviceName: options.serviceName,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return {
+        success: false,
+        error: new AuthError(
+          'Failed to update OAuth user metadata',
+          'OAUTH_METADATA_ERROR',
           error instanceof Error ? error.message : 'Unknown error',
           'Check network connection and try again'
         ),

@@ -206,6 +206,17 @@ export type ServiceManagementOptions = {
 };
 
 /**
+ * OAuth user metadata update options
+ */
+export type OAuthMetadataOptions = {
+  readonly userId: string;
+  readonly serviceName: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly language: string;
+};
+
+/**
  * Express middleware options for microservice auth
  */
 export type MicroserviceMiddlewareOptions = {
