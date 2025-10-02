@@ -529,7 +529,7 @@ export class AuthSDK {
   /**
    * Update OAuth user metadata with service information
    *
-   * This method is used to add service_name and other metadata to OAuth users
+   * This method is used to add service_name to OAuth users
    * who signed up through external providers (Google, GitHub, etc.)
    */
   public async updateOAuthUserMetadata(
@@ -561,15 +561,14 @@ export class AuthSDK {
       const currentServices = currentAppMetadata.services || [];
       const currentRoles = currentAppMetadata.roles || {};
 
+      // Add service_name to user metadata
       const updatedUserMetadata = {
         ...currentUserMetadata,
-        first_name: options.firstName,
-        last_name: options.lastName,
-        language: options.language,
         service_name: options.serviceName,
         last_seen: new Date().toISOString(),
       };
 
+      // Add service to app metadata if not already present
       const updatedServices = currentServices.includes(options.serviceName)
         ? currentServices
         : [...currentServices, options.serviceName];
@@ -609,9 +608,6 @@ export class AuthSDK {
       this.logger?.info('OAuth user metadata updated successfully', {
         userId: options.userId,
         serviceName: options.serviceName,
-        firstName: options.firstName,
-        lastName: options.lastName,
-        language: options.language,
       });
 
       return { success: true };
