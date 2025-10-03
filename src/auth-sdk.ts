@@ -1147,7 +1147,7 @@ export class AuthSDK {
    */
   public async forgotPassword(
     email: string,
-    options?: { redirectTo?: string; language?: string }
+    options: { redirectTo: string; language: string }
   ): Promise<{ success: boolean; error?: AuthError }> {
     try {
       if (!this.isValidEmail(email)) {
@@ -1162,15 +1162,11 @@ export class AuthSDK {
         };
       }
 
-      let redirectToUrl = options?.redirectTo;
-      if (options?.language && options?.redirectTo) {
-        const url = new URL(options.redirectTo);
-        url.searchParams.set('lang', options.language);
-        redirectToUrl = url.toString();
-      }
+      const url = new URL(options.redirectTo);
+      url.searchParams.set('lang', options.language);
 
       const { error } = await this.supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectToUrl,
+        redirectTo: url.toString(),
       });
 
       if (error) {
